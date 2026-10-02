@@ -17,7 +17,7 @@ export const apiRouter = Router();
 // apiRouter.use("/jobs", jobRouter);
 // apiRouter.use("/auth/webhooks/clerk", clerkWebhookRouter);
 
-apiRouter.get("/health", async (_request, response) => {
+apiRouter.get("/", async (_request, response) => {
     let database: "connected" | "unavailable" = "connected";
 
     try {
