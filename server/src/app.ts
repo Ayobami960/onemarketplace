@@ -6,11 +6,13 @@ import { notFoundHandler } from "./middleware/not-found-middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 export const app = express();
 
+type RequestWithRawBody = Express.Request & { rawBody?: Buffer };
+
 app.disable("x-power-by");
 app.use(express.json({
     limit: "2mb",
     verify: (request, _response, body) => {
-        (request as Express.Request).rawBody = Buffer.from(body);
+    (request as RequestWithRawBody).rawBody = Buffer.from(body);
     },
 }));
 app.use(cors({
