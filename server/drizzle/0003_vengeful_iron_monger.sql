@@ -1,0 +1,1 @@
+ALTER TABLE "job_posts" DROP COLUMN "expected_level";

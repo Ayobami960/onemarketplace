@@ -1,0 +1,1 @@
+ALTER TABLE "client_metadata" ALTER COLUMN "role" SET DATA TYPE text;
