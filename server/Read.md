@@ -17,9 +17,9 @@ docker compose ps
 
 Set the Vercel project's **Root Directory** to `server` and **Framework Preset**
 to `Other`. The `vercel.json` in this directory runs `npm run build` to compile
-TypeScript into `dist/`, then rewrites all requests to the Node.js function in
-`api/index.js`, which delegates to the existing Express app. Leave the output
-directory empty; do not configure a static output directory.
+TypeScript into `dist/`, then routes all requests to the Node.js function in
+`api/index.js` while preserving each incoming path for Express. Leave the
+output directory empty; do not configure a static output directory.
 
 The function initializes the existing database client from
 `src/database/clients.ts` on its first invocation in each warm instance. Local
