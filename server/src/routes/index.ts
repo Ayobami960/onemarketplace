@@ -12,7 +12,7 @@ import { connectDatabase } from "../database/clients.js";
 export const apiRouter = Router();
 
 // apiRouter.use("/auth", authRouter);
-// apiRouter.use("/client", clientRouter);
+// apiRouter.use("/client"  , clientRouter);
 // apiRouter.use("/freelancer", freelancerRouter);
 // apiRouter.use("/jobs", jobRouter);
 // apiRouter.use("/auth/webhooks/clerk", clerkWebhookRouter);

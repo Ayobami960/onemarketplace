@@ -40,14 +40,21 @@ const initializeServices = (): Promise<ExpressApp> => {
 export default async function handler(request: Request, response: Response): Promise<void> {
     try {
         const app = await initializeServices();
-        app(request, response);
+        await new Promise<void>((resolve, reject) => {
+            response.once("finish", resolve);
+            response.once("close", resolve);
+            response.once("error", reject);
+            app(request, response);
+        });
     } catch (error) {
-        console.error("Failed to initialize API services.", error);
-        response.statusCode = 503;
-        response.setHeader("Content-Type", "application/json; charset=utf-8");
-        response.end(JSON.stringify({
-            success: false,
-            message: "Service temporarily unavailable.",
-        }));
+        console.error("Failed to handle request.", error);
+        if (!response.headersSent) {
+            response.statusCode = 503;
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.end(JSON.stringify({
+                success: false,
+                message: "Service temporarily unavailable.",
+            }));
+        }
     }
 }

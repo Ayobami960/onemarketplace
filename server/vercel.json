@@ -1,17 +1,10 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/api/index.js",
-      "transforms": [
-        {
-          "type": "request.path",
-          "op": "set",
-          "args": "/$1"
-        }
-      ]
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "dist/**"
     }
-  ]
+  },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.js" }]
 }
