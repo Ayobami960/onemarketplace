@@ -3,7 +3,7 @@ import {createClient} from "redis";
 import {env} from "./env.js";
 
 export const redis = createClient({
-    password: env.redis.password,
+    ...(env.redis.password ? { password: env.redis.password } : {}),
     database: env.redis.database,
     socket: {
         host: env.redis.host,

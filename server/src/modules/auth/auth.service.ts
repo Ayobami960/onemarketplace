@@ -45,6 +45,10 @@ export function getVerifiedEmail(user: User): string | undefined {
 
 
 export const receiveSignup = async (input: SignupInput): Promise<void> => {
+    if (!env.clerkSecretKey) {
+        throw new ApiError(500, "Clerk secret key is not configured.");
+    }
+
     const clerk = createClerkClient({ secretKey: env.clerkSecretKey });
     const user = await clerk.users.getUser(input.userId);
     const email = getVerifiedEmail(user);

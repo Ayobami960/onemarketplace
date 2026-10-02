@@ -67,7 +67,7 @@ clerkWebhookRouter.post(
     const webRequest = new Request(request.originalUrl, {
       method: request.method,
       headers,
-      body: request.rawBody?.toString("utf8"),
+      ...(request.rawBody ? { body: request.rawBody.toString("utf8") } : {}),
     });
 
     let event;
@@ -97,6 +97,10 @@ clerkWebhookRouter.post(
         message: "Event payload missing user id; nothing to do.",
       });
       return;
+    }
+
+    if (!env.clerkSecretKey) {
+      throw new ApiError(500, "Clerk secret key is not configured.");
     }
 
     const clerk = createClerkClient({ secretKey: env.clerkSecretKey });
@@ -143,7 +147,6 @@ clerkWebhookRouter.post(
 
     await receiveSignup({
       userId,
-      sessionId: undefined,
       role,
       accountExists: false,
       isOnboarded: false,
