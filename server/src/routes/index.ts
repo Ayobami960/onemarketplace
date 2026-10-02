@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { ApiResponse } from "../types/common.types.js";
+import type { ApiResponse } from "../types/common.types.js";
 import { SERVICE_NAME } from "../config/constants.js";
 import { authRouter } from "../modules/auth/auth.route.js";
 import { clerkWebhookRouter } from "../modules/auth/auth.webhook.js";

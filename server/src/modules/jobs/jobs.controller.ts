@@ -1,4 +1,4 @@
-import { RequestHandler } from "express";
+import type { RequestHandler } from "express";
 import { ApiError } from "../../utils/api-error.js";
 import { randomUUID } from "crypto";
 import { asyncHandler } from "../../utils/async-handler.js";

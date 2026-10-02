@@ -1,0 +1,21 @@
+// {
+//     "compilerOptions": {
+//         "target": "es2022",
+//         "module": "nodenext",
+//         "moduleResolution": "nodenext",
+//         "rootDir": "src",
+//         "outDir": "dist",
+//         "types": ["node"],
+//         "strict": true,
+//         "esModuleInterop": true,
+//         "forceConsistentCasingInFileNames": true,
+//         "skipLibCheck": true,
+//         "noUncheckedIndexedAccess": true,
+//         "sourceMap": true
+//     },
+//     "include": ["src/**/*.ts"],
+//     "exclude": ["node_modules", "dist"]
+// }
+
+npm install -D typescript@5.9.3
+

@@ -1,8 +1,8 @@
-import { RequestHandler } from "express";
+import type { RequestHandler } from "express";
 import { ApiError } from "../../utils/api-error.js";
 import { asyncHandler } from "../../utils/async-handler.js";
-import { ApiResponse } from "../../types/common.types.js";
-import { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
+import type { ApiResponse } from "../../types/common.types.js";
+import type { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
 import { getFreelancerProfile, saveFreelancerProfile } from "./freelancer.service.js";
 import { requireText } from "../../config/constants.js";
 import { env } from "../../config/env.js";

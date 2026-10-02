@@ -1,9 +1,14 @@
-import { RequestHandler } from "express";
+import type { RequestHandler } from "express";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { ApiError } from "../../utils/api-error.js";
-import { ClientMetadataData, ClientProfileData, getClientProfile, saveClientProfile, SaveClientProfileInput } from "./client.service.js";
-import { ApiResponse } from "../../types/common.types.js";
+
+import { getClientProfile, saveClientProfile } from "./client.service.js";
+
+import type { ClientMetadataData, ClientProfileData, SaveClientProfileInput } from "./client.service.js";
+
+import type { ApiResponse } from "../../types/common.types.js";
 import { requireText, requireWebsite } from "../../config/constants.js";
+
 
 export const getLoggedInClientProfile: RequestHandler = asyncHandler(
     async (request, response) => {

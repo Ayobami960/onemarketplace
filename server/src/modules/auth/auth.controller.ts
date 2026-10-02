@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { ApiError } from "../../utils/api-error.js";
-import { ApiResponse } from "../../types/common.types.js";
+import type { ApiResponse } from "../../types/common.types.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import { receiveSignup } from "./auth.service.js";
 

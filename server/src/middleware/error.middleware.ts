@@ -1,6 +1,6 @@
 import type { ErrorRequestHandler } from "express";
 import { ApiError } from "../utils/api-error.js";
-import { ApiResponse } from "../types/common.types.js";
+import type { ApiResponse } from "../types/common.types.js";
 
 export const errorHandler: ErrorRequestHandler = (
     error: unknown,

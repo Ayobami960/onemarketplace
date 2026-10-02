@@ -36,6 +36,16 @@ const getBearerToken = (authorizationHeader: string | undefined) => {
     return token || null;
 };
 
+const getClerkSecretKey = () => {
+    if (!env.clerkSecretKey) {
+        throw new ApiError(500, "Clerk secret key is not configured.");
+    }
+
+    return env.clerkSecretKey;
+};
+
+const getClerkClient = () => createClerkClient({ secretKey: getClerkSecretKey() });
+
 /**
  * Returns true when Clerk considers at least one of the user's email
  * addresses verified, using the same rule as receiveSignup.
@@ -45,7 +55,7 @@ function isClerkEmailVerified(
 ): Promise<boolean> {
     return (async () => {
         try {
-            const clerk = createClerkClient({ secretKey: env.clerkSecretKey });
+            const clerk = getClerkClient();
             const user = await clerk.users.getUser(userId);
             return user.emailAddresses.some(
                 (addr) => addr.verification?.status === "verified",
@@ -74,12 +84,6 @@ const isAccountAvailable = async (
     }
 
     if (cachedValue) {
-        try {
-            await redis.expire(cacheKey, ACCOUNT_AUTH_CACHE_TTL_SECONDS);
-        } catch (error) {
-            console.warn("Auth cache expiry refresh failed.", error);
-        }
-
         return JSON.parse(cachedValue) as CachedAccountAuth;
     }
 
@@ -142,12 +146,13 @@ export const isAuthenticated: RequestHandler = asyncHandler(
 
         }
 
+        const secretKey = getClerkSecretKey();
         let claims: Awaited<ReturnType<typeof verifyToken>>;
 
 
         try {
             claims = await verifyToken(token, {
-                secretKey: env.clerkSecretKey,
+                secretKey,
             });
 
         } catch (error) {
@@ -171,7 +176,7 @@ export const isAuthenticated: RequestHandler = asyncHandler(
 
         request.auth = {
             userId: claims.sub,
-            sessionId: typeof claims.sid === "string" ? claims.sid : undefined,
+            ...(typeof claims.sid === "string" ? { sessionId: claims.sid } : {}),
             role: requestedRole,
             accountExists: accountAuth.accountExists,
             isOnboarded: accountAuth.isOnboarded,
@@ -195,17 +200,18 @@ export const isSignupAuthenticated: RequestHandler = asyncHandler(
             throw new ApiError(400, "A valid account role is required.");
         }
 
+        const secretKey = getClerkSecretKey();
         let claims: Awaited<ReturnType<typeof verifyToken>>;
 
         try {
             claims = await verifyToken(token, {
-                secretKey: env.clerkSecretKey,
+                secretKey,
             });
         } catch {
             throw new ApiError(401, "Authentication token is invalid or expired.");
         }
 
-        const clerk = createClerkClient({ secretKey: env.clerkSecretKey });
+        const clerk = getClerkClient();
         const user = await clerk.users.getUser(claims.sub);
         const recordedRole =
             user.unsafeMetadata?.role ?? user.unsafeMetadata?.signupRole;
@@ -216,7 +222,7 @@ export const isSignupAuthenticated: RequestHandler = asyncHandler(
 
         request.auth = {
             userId: claims.sub,
-            sessionId: typeof claims.sid === "string" ? claims.sid : undefined,
+            ...(typeof claims.sid === "string" ? { sessionId: claims.sid } : {}),
             role: requestedRole,
             accountExists: false,
             isOnboarded: false,

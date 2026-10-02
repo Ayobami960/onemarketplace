@@ -1,4 +1,4 @@
-import { RequestHandler } from "express";
+import type { RequestHandler } from "express";
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiError } from "../utils/api-error.js";
 import { CONNECTS_CACHE_TTL_SECONDS, getConnectsCachKey } from "../config/constants.js";

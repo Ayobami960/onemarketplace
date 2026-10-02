@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../../database/clients.js";
 import { accounts, freelancer_metadata, freelancer_portfolios } from "../../database/schema.js";
-import { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
+import type { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
 import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/api-error.js";
 import { imageKit } from "../../config/imageKit.js";
