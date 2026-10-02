@@ -6,8 +6,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsx",
-    "start": "node dist/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
     "db:generate": "npx drizzle-kit generate",
     "db:migrate": "npx drizzle-kit migrate",
     "db:push": "npx drizzle-kit push",
@@ -30,7 +30,7 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.4",
     "@types/ws": "^8.18.1",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2"

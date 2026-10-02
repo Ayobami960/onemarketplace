@@ -1,7 +1,7 @@
 import express from "express"
 import cors from "cors"
 import { ApiResponse } from "./types/common.types.js";
-import { API_PREFIX } from "./config/constants.js";
+import { API_PREFIX, SERVICE_NAME } from "./config/constants.js";
 import { apiRouter } from "./routes/index.js";
 import { notFoundHandler } from "./middleware/not-found-middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
@@ -38,6 +38,13 @@ app.get("/", (_request, response)=> {
     response.status(200).json(body);
 }) 
 
+
+app.get("/health", (_request, response) => {
+  response.status(200).json({
+    status: "ok",
+    service: SERVICE_NAME,
+  });
+});
 
 app.use(API_PREFIX, apiRouter)
 app.use(notFoundHandler);

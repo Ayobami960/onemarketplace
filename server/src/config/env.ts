@@ -20,10 +20,14 @@ const parsePort = (value: string | undefined): number => {
     return port;
 }
 
-const parsePositiveInt = (value: string | undefined): number => {
+const parsePositiveInt = (value: string | undefined, defaultValue: number): number => {
+    if (value === undefined || value === "") {
+        return defaultValue;
+    }
+
     const parsed = Number(value);
 
-    if (!value || !Number.isInteger(parsed) || parsed < 1) {
+    if (!Number.isInteger(parsed) || parsed < 1) {
         throw new Error("Value must be a positive integer.");
     }
 
@@ -45,16 +49,17 @@ export const env = {
     imageKitPublicKey: process.env.IMAGEKIT_PUBLIC_KEY,
     imageKitUrlEndpoint: process.env.IMAGEKIT_END_POINT,
     freelancerProfile: {
-        maxPortfolioProjects: parsePositiveInt(process.env.FREELANCER_MAX_PORTFOLIO_PROJECTS),
-        maxSkills: parsePositiveInt(process.env.FREELANCER_MAX_SKILLS),
-        minSkills: parsePositiveInt(process.env.FREELANCER_MIN_SKILLS),
-        maxLanguages: parsePositiveInt(process.env.FREELANCER_MAX_LANGUAGES),
-        maxSkillLength: parsePositiveInt(process.env.FREELANCER_MAX_SKILL_LENGTH),
-        maxTextLength: parsePositiveInt(process.env.FREELANCER_MAX_TEXT_LENGTH),
-        maxDescriptionLength: parsePositiveInt(process.env.FREELANCER_MAX_DESCRIPTION_LENGTH),
+        maxPortfolioProjects: parsePositiveInt(process.env.FREELANCER_MAX_PORTFOLIO_PROJECTS, 12),
+        maxSkills: parsePositiveInt(process.env.FREELANCER_MAX_SKILLS, 15),
+        minSkills: parsePositiveInt(process.env.FREELANCER_MIN_SKILLS, 3),
+        maxLanguages: parsePositiveInt(process.env.FREELANCER_MAX_LANGUAGES, 5),
+        maxSkillLength: parsePositiveInt(process.env.FREELANCER_MAX_SKILL_LENGTH, 20),
+        maxTextLength: parsePositiveInt(process.env.FREELANCER_MAX_TEXT_LENGTH, 120),
+        maxDescriptionLength: parsePositiveInt(process.env.FREELANCER_MAX_DESCRIPTION_LENGTH, 5000),
         maxPortfolioDescriptionLength: parsePositiveInt(
             process.env.FREELANCER_MAX_PORTFOLIO_DESCRIPTION_LENGTH,
+            2000,
         ),
-        maxBase64ImageBytes: parsePositiveInt(process.env.FREELANCER_MAX_BASE64_IMAGE_BYTES),
+        maxBase64ImageBytes: parsePositiveInt(process.env.FREELANCER_MAX_BASE64_IMAGE_BYTES, 5_242_880),
     },
 } as const;

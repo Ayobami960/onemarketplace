@@ -53,12 +53,23 @@ const closeHttpServer = (): Promise<void> =>
 const start = async (): Promise<void> => {
     // The database is required: fail fast if it cannot be reached.
     await connectDatabase();
+    if (isShuttingDown) {
+        return;
+    }
 
     // Redis is optional: the service degrades gracefully without the auth cache.
-    try {
-        await connectRedis();
-    } catch (error) {
-        console.warn("Redis is unavailable; continuing without auth cache.", error);
+    if (process.env.REDIS_HOST) {
+        try {
+            await connectRedis();
+        } catch (error) {
+            console.warn("Redis is unavailable; continuing without auth cache.", error);
+        }
+    } else {
+        console.info("REDIS_HOST is not configured; continuing without auth cache.");
+    }
+
+    if (isShuttingDown) {
+        return;
     }
 
     server = await startHttpServer();

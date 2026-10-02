@@ -13,6 +13,37 @@ docker compose ps
 `docker compose up -d` pulls the required images and starts the services in the background.
 `docker compose ps` shows the running containers, ports, and health status.
 
+## Vercel Deployment
+
+Set the Vercel project's **Root Directory** to `server`. The `vercel.json` in
+this directory runs `npm run build` to compile TypeScript into `dist/`, then
+builds `dist/vercel-handler.js` as a Node.js function and routes requests to the
+existing Express app. Do not set a static output directory.
+
+The function initializes the existing database client from
+`src/database/clients.ts` on its first invocation in each warm instance. Local
+development continues to use `npm run dev` and `src/server.ts`.
+
+Configure `DATABASE_URL` in Vercel for every deployment environment. It must be
+the connection string for the existing Neon database. The freelancer profile
+limits have validated defaults matching the local project configuration; set
+`FREELANCER_MAX_PORTFOLIO_PROJECTS`, `FREELANCER_MAX_SKILLS`,
+`FREELANCER_MIN_SKILLS`, `FREELANCER_MAX_LANGUAGES`,
+`FREELANCER_MAX_SKILL_LENGTH`, `FREELANCER_MAX_TEXT_LENGTH`,
+`FREELANCER_MAX_DESCRIPTION_LENGTH`,
+`FREELANCER_MAX_PORTFOLIO_DESCRIPTION_LENGTH`, or
+`FREELANCER_MAX_BASE64_IMAGE_BYTES` only when overriding those defaults. Any
+configured limits must be positive integers. Configure `CLERK_SECRET_KEY`,
+`CLERK_WEBHOOK_SIGNING_SECRET`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_PUBLIC_KEY`,
+and `IMAGEKIT_END_POINT` if the corresponding integrations are enabled. Redis is
+optional; set `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, and `REDIS_DB` when
+using a hosted Redis service. Without Redis, the API logs the connection failure
+and continues without the auth cache.
+
+After deployment, verify `GET /health` for function availability and
+`GET /api/v1/health` for database connectivity. API routes remain under
+`/api/v1`.
+
 To stop the services:
 
 ```bash
