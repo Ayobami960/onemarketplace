@@ -115,20 +115,22 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
     process.exit(failed ? 1 : exitCode);
 };
 
-process.on("SIGINT", () => void shutdown("SIGINT received"));
-process.on("SIGTERM", () => void shutdown("SIGTERM received"));
+if (process.env.VERCEL !== "1") {
+    process.on("SIGINT", () => void shutdown("SIGINT received"));
+    process.on("SIGTERM", () => void shutdown("SIGTERM received"));
 
-process.on("unhandledRejection", (reason) => {
-    console.error("Unhandled promise rejection.", reason);
-    void shutdown("Unhandled rejection", 1);
-});
+    process.on("unhandledRejection", (reason) => {
+        console.error("Unhandled promise rejection.", reason);
+        void shutdown("Unhandled rejection", 1);
+    });
 
-process.on("uncaughtException", (error) => {
-    console.error("Uncaught exception.", error);
-    void shutdown("Uncaught exception", 1);
-});
+    process.on("uncaughtException", (error) => {
+        console.error("Uncaught exception.", error);
+        void shutdown("Uncaught exception", 1);
+    });
 
-start().catch((error) => {
-    console.error(`Failed to start ${SERVICE_NAME}.`, error);
-    void shutdown("Startup failure", 1);
-});
+    start().catch((error) => {
+        console.error(`Failed to start ${SERVICE_NAME}.`, error);
+        void shutdown("Startup failure", 1);
+    });
+}

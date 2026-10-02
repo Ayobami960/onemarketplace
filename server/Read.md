@@ -15,10 +15,11 @@ docker compose ps
 
 ## Vercel Deployment
 
-Set the Vercel project's **Root Directory** to `server`. The `vercel.json` in
-this directory runs `npm run build` to compile TypeScript into `dist/`, then
-builds `dist/vercel-handler.js` as a Node.js function and routes requests to the
-existing Express app. Do not set a static output directory.
+Set the Vercel project's **Root Directory** to `server` and **Framework Preset**
+to `Other`. The `vercel.json` in this directory runs `npm run build` to compile
+TypeScript into `dist/`, then rewrites all requests to the Node.js function in
+`api/index.js`, which delegates to the existing Express app. Leave the output
+directory empty; do not configure a static output directory.
 
 The function initializes the existing database client from
 `src/database/clients.ts` on its first invocation in each warm instance. Local
@@ -40,9 +41,9 @@ optional; set `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, and `REDIS_DB` when
 using a hosted Redis service. Without Redis, the API logs the connection failure
 and continues without the auth cache.
 
-After deployment, verify `GET /health` for function availability and
-`GET /api/v1/health` for database connectivity. API routes remain under
-`/api/v1`.
+After deployment, verify `GET /` for the `API is running` response, `GET
+/health` for function availability, and `GET /api/v1/health` for database
+connectivity. API routes remain under `/api/v1`.
 
 To stop the services:
 

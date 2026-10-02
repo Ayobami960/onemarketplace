@@ -1,6 +1,5 @@
 import express from "express"
 import cors from "cors"
-import { ApiResponse } from "./types/common.types.js";
 import { API_PREFIX, SERVICE_NAME } from "./config/constants.js";
 import { apiRouter } from "./routes/index.js";
 import { notFoundHandler } from "./middleware/not-found-middleware.js";
@@ -29,14 +28,9 @@ app.use(cors({
 }));
 app.use(express.urlencoded({ extended: true}));
 
-app.get("/", (_request, response)=> {
-    const body: ApiResponse<never> = {
-        success: true,
-        message: "One MarketPlace.io Api is running.",
-    };
-
-    response.status(200).json(body);
-}) 
+app.get("/", (_request, response) => {
+  response.status(200).send("API is running");
+});
 
 
 app.get("/health", (_request, response) => {
