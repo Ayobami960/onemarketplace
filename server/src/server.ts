@@ -1,14 +1,113 @@
+import express from "express";
+import cors from "cors";
 import { createServer, type Server } from "node:http";
-import { SERVICE_NAME } from "./config/constants.js";
+import { API_PREFIX, SERVICE_NAME } from "./config/constants.js";
 import { env } from "./config/env.js";
-import { app } from "./app.js";
+import { apiRouter } from "./routes/index.js";
+import { notFoundHandler } from "./middleware/not-found-middleware.js";
+import { errorHandler } from "./middleware/error.middleware.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { connectDatabase, disconnectDatabase } from "./database/clients.js";
 
-const SHUTDOWN_TIMEOUT_MS = 10_000;
+const isVercel = process.env.VERCEL === "1";
+
+/* -------------------------------------------------------------------------- */
+/*                                Express app                                 */
+/* -------------------------------------------------------------------------- */
+
+const app = express();
+
+type RequestWithRawBody = Express.Request & { rawBody?: Buffer };
+
+app.disable("x-powered-by");
+
+app.use(
+    cors({
+        origin: (_origin, callback) => {
+            // Allows all origins (including no-origin requests like curl/mobile apps).
+            callback(null, true);
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
+    })
+);
+
+app.use(
+    express.json({
+        limit: "2mb",
+        verify: (request, _response, body) => {
+            (request as RequestWithRawBody).rawBody = Buffer.from(body);
+        },
+    })
+);
+app.use(express.urlencoded({ extended: true }));
+
+/* -------------------------------------------------------------------------- */
+/*                              Services lifecycle                            */
+/* -------------------------------------------------------------------------- */
 
 let server: Server | undefined;
 let isShuttingDown = false;
+let servicesReady: Promise<void> | undefined;
+
+/**
+ * Connects the database (required) and Redis (optional).
+ * Memoized so it only runs once, whether called at startup or lazily on Vercel.
+ */
+const initServices = (): Promise<void> => {
+    servicesReady ??= (async () => {
+        // The database is required: fail fast if it cannot be reached.
+        await connectDatabase();
+
+        // Redis is optional: the service degrades gracefully without the auth cache.
+        if (process.env.REDIS_HOST) {
+            try {
+                await connectRedis();
+            } catch (error) {
+                console.warn("Redis is unavailable; continuing without auth cache.", error);
+            }
+        } else {
+            console.info("REDIS_HOST is not configured; continuing without auth cache.");
+        }
+    })().catch((error) => {
+        servicesReady = undefined; // allow a retry on the next request
+        throw error;
+    });
+
+    return servicesReady;
+};
+
+// On Vercel there is no start() call, so connect lazily on the first request.
+if (isVercel) {
+    app.use(async (_request, _response, next) => {
+        try {
+            await initServices();
+            next();
+        } catch (error) {
+            next(error);
+        }
+    });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                   Routes                                   */
+/* -------------------------------------------------------------------------- */
+
+app.get("/", (_request, response) => {
+    response.status(200).json({
+        status: "ok",
+        service: SERVICE_NAME,
+    });
+});
+
+app.use(API_PREFIX, apiRouter);
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+/* -------------------------------------------------------------------------- */
+/*                         HTTP server (non-Vercel only)                      */
+/* -------------------------------------------------------------------------- */
 
 /**
  * Starts the HTTP server and resolves once it is actually listening.
@@ -51,23 +150,7 @@ const closeHttpServer = (): Promise<void> =>
     });
 
 const start = async (): Promise<void> => {
-    // The database is required: fail fast if it cannot be reached.
-    await connectDatabase();
-    if (isShuttingDown) {
-        return;
-    }
-
-    // Redis is optional: the service degrades gracefully without the auth cache.
-    if (process.env.REDIS_HOST) {
-        try {
-            await connectRedis();
-        } catch (error) {
-            console.warn("Redis is unavailable; continuing without auth cache.", error);
-        }
-    } else {
-        console.info("REDIS_HOST is not configured; continuing without auth cache.");
-    }
-
+    await initServices();
     if (isShuttingDown) {
         return;
     }
@@ -115,7 +198,9 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
     process.exit(failed ? 1 : exitCode);
 };
 
-if (process.env.VERCEL !== "1") {
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+if (!isVercel) {
     process.on("SIGINT", () => void shutdown("SIGINT received"));
     process.on("SIGTERM", () => void shutdown("SIGTERM received"));
 
@@ -134,3 +219,7 @@ if (process.env.VERCEL !== "1") {
         void shutdown("Startup failure", 1);
     });
 }
+
+// Vercel detects the Express app through this default export.
+export default app;
+export { app };
