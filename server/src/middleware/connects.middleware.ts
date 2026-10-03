@@ -26,8 +26,21 @@ export const availableConnects: RequestHandler = asyncHandler( async (request, _
         return;
     }
 
-    const [balance] = await db.select({connects: connects.connects}).from(connects).where(eq(connects.freelancer_id, request.auth.userId)).limit(1);
+    const [balance] = await db
+        .select({connects: connects.connects})
+        .from(connects)
+        .where(eq(connects.freelancer_id, request.auth.userId))
+        .limit(1);
 
-    
+
+    request.availableConnects = balance?.connects ?? 0;
+    await redis.setEx(
+        cacheKey,
+        CONNECTS_CACHE_TTL_SECONDS,
+        String(request.availableConnects)
+    );
+
+    next();
+
 },
 );

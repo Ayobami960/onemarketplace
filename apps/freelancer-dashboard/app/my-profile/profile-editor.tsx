@@ -479,8 +479,8 @@ function ProfilePreview({user, profileMetaData}: {user: UserResource | undefined
                   Languages
                 </p>
                {
-                profileMetaData.languages.map((language: any) => (
-                <p className="mt-2 text-sm text-[#656b63]">
+                profileMetaData?.languages.map((language: any) => (
+                <p key={`${language.language}-${language.proficiency}`} className="mt-2 text-sm text-[#656b63]">
                   {language.language} - {language.proficiency}
                 </p>
                 ))

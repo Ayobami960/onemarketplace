@@ -4,6 +4,9 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
+import { SigningOutScreen } from "./signing-out-screen";
 
 
 const accountItems = [
@@ -30,37 +33,80 @@ const accountItems = [
 export function AccountDropdown() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const {signOut} = useClerk();
-
+  const { signOut, setActive } = useClerk();
+  const queryClient = useQueryClient();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  const signOutInProgress = useRef(false);
+  const redirectStarted = useRef(false);
   useEffect(() => {
     if (!open) return;
-
-    const handlePointerDown = (event: MouseEvent) => {
+    const close = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [open]);
-
-  const logOut = () => {
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    window.location.assign("/login");
+  const clearClientState = () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
   };
 
-    const logOutHandler = async () => {
-    await signOut()
-  }
+  const finishSignOut = async (forceLocalClear = false) => {
+    if (redirectStarted.current) return;
+    redirectStarted.current = true;
+
+    if (forceLocalClear) {
+      try {
+        await Promise.race([
+          setActive({ session: null }).catch(() => undefined),
+          new Promise<void>((resolve) => window.setTimeout(resolve, 250)),
+        ]);
+      } catch {
+        // Continue to cache cleanup and login even if local Clerk cleanup fails.
+      }
+    }
+
+    clearClientState();
+    const loginUrl = new URL(
+      "/login",
+      process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE || "http://localhost:3000",
+    );
+    window.location.replace(loginUrl.toString());
+  };
+
+  const logOutHandler = async () => {
+    if (signOutInProgress.current) return;
+
+    signOutInProgress.current = true;
+    redirectStarted.current = false;
+    setOpen(false);
+    setSignOutFailed(false);
+    setIsSigningOut(true);
+
+    const timeoutId = window.setTimeout(() => {
+      toast.error("Sign out is taking longer than expected. Redirecting to login.");
+      void finishSignOut(true);
+    }, 8000);
+
+    try {
+      await signOut();
+      window.clearTimeout(timeoutId);
+      await finishSignOut();
+    } catch {
+      window.clearTimeout(timeoutId);
+      if (redirectStarted.current) return;
+
+      signOutInProgress.current = false;
+      setIsSigningOut(false);
+      setSignOutFailed(true);
+      toast.error("Could not sign you out. Check your connection and try again.");
+    }
+  };
+
 
   return (
+    <>
     <div ref={containerRef} className="relative">
       <button
         type="button"
@@ -157,6 +203,7 @@ export function AccountDropdown() {
               type="button"
               role="menuitem"
               onClick={() => logOutHandler()}
+              disabled={isSigningOut || signOutFailed}
               className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-left text-[#8b5656] transition hover:bg-[#f8eeee]"
             >
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f7eeee]">
@@ -168,5 +215,9 @@ export function AccountDropdown() {
         </div>
       )}
     </div>
+    {(isSigningOut || signOutFailed) && (
+      <SigningOutScreen error={signOutFailed} onRetry={logOutHandler}/>
+    )}
+    </>
   );
 }

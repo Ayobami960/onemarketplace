@@ -4,11 +4,14 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { BrandMark } from "../brand-mark";
 import { clientConversations } from "../data/client-data";
 import { MarketplaceSearchModal } from "../discovery/marketplace-search-modal";
 import { clientHeaderNavigation } from "./navigation";
 import { useClerk } from "@clerk/nextjs";
+import { SigningOutScreen } from "./signing-out-screen";
 
 
 const notifications = [
@@ -107,7 +110,12 @@ function Notifications() {
 
 function AccountMenu() {
   const {signOut} = useClerk();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
+  const signOutInProgress = useRef(false);
+  const redirectStarted = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -117,14 +125,53 @@ function AccountMenu() {
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
+  const clearClientState = () => {
+    void queryClient.cancelQueries();
+    queryClient.clear();
+  };
 
-
+  const finishSignOut = () => {
+    if (redirectStarted.current) return;
+    redirectStarted.current = true;
+    clearClientState();
+    const loginUrl = new URL(
+      "/login",
+      process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE ?? window.location.origin,
+    );
+    window.location.replace(loginUrl.toString());
+  };
 
   const logOutHandler = async () => {
-    await signOut()
-  }
+    if (signOutInProgress.current) return;
+
+    signOutInProgress.current = true;
+    redirectStarted.current = false;
+    setOpen(false);
+    setSignOutFailed(false);
+    setIsSigningOut(true);
+
+    const timeoutId = window.setTimeout(() => {
+      toast.error("Sign out is taking longer than expected. Redirecting to login.");
+      finishSignOut();
+    }, 8000);
+
+    try {
+      await signOut();
+      window.clearTimeout(timeoutId);
+      finishSignOut();
+    } catch {
+      window.clearTimeout(timeoutId);
+      if (redirectStarted.current) return;
+
+      signOutInProgress.current = false;
+      setIsSigningOut(false);
+      setSignOutFailed(true);
+      toast.error("Could not sign you out. Check your connection and try again.");
+    }
+  };
 
   return (
+    <>
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex cursor-pointer items-center gap-2 rounded-full border border-black/8 p-1 pr-2.5 hover:bg-black/3">
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">OB</span>
@@ -163,7 +210,8 @@ function AccountMenu() {
               <Icon icon="solar:alt-arrow-right-linear" width="14" className="text-[#8a8f87]" />
             </button>
             <button type="button"
-             onClick={() => logOutHandler()} 
+             onClick={logOutHandler}
+             disabled={isSigningOut || signOutFailed}
              className="flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-xs font-semibold text-[#8b5656] hover:bg-[#f8eeee]">
               <Icon icon="solar:logout-2-linear" width="18" />
                Log out
@@ -172,6 +220,10 @@ function AccountMenu() {
         </div>
       )}
     </div>
+    {(isSigningOut || signOutFailed) && (
+      <SigningOutScreen error={signOutFailed} onRetry={logOutHandler} />
+    )}
+    </>
   );
 }
 
