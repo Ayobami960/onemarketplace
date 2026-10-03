@@ -13,7 +13,7 @@ interface MeResponse {
     };
 }
 
-const redirectToLogin = () =>
+const redirectToHomePage = () =>
     NextResponse.redirect(
         new URL(
             "/login",
@@ -33,14 +33,14 @@ export default clerkMiddleware(async (auth, request) => {
     const { userId, getToken } = await auth();
 
     if (!userId) {
-        return redirectToLogin();
+        return redirectToHomePage();
     }
 
     try {
         const token = await getToken();
 
         if (!token) {
-            return redirectToLogin();
+            return redirectToHomePage();
         }
 
         const meResponse = await fetch(new URL("/api/me", request.url), {
@@ -49,13 +49,13 @@ export default clerkMiddleware(async (auth, request) => {
         });
 
         if (!meResponse.ok) {
-            return redirectToLogin();
+            return redirectToHomePage();
         }
 
         const account = (await meResponse.json()) as MeResponse;
 
         if (!account.success || !account.data?.accountExists || account.data.role !== "freelancer") {
-            return redirectToLogin();
+            return redirectToHomePage();
         }
 
         const isEditingProfile = request.nextUrl.pathname === "/profile/edit";
@@ -71,7 +71,7 @@ export default clerkMiddleware(async (auth, request) => {
         return NextResponse.next();
     } catch (error) {
         console.error("Freelancer account status check failed.", error);
-        return redirectToLogin();
+        return redirectToHomePage();
     }
 });
 

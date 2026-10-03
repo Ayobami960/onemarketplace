@@ -39,6 +39,7 @@ export function AccountDropdown() {
   const [signOutFailed, setSignOutFailed] = useState(false);
   const signOutInProgress = useRef(false);
   const redirectStarted = useRef(false);
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => {
@@ -68,11 +69,11 @@ export function AccountDropdown() {
     }
 
     clearClientState();
-    const loginUrl = new URL(
-      "/login",
+    const redirectToHomePage = new URL(
+      "/",
       process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE || "http://localhost:3000",
     );
-    window.location.replace(loginUrl.toString());
+    window.location.replace(redirectToHomePage.toString());
   };
 
   const logOutHandler = async () => {

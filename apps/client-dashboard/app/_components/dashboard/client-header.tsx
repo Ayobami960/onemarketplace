@@ -134,11 +134,11 @@ function AccountMenu() {
     if (redirectStarted.current) return;
     redirectStarted.current = true;
     clearClientState();
-    const loginUrl = new URL(
-      "/login",
+    const redirectToHomePage = new URL(
+      "/",
       process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE ?? window.location.origin,
     );
-    window.location.replace(loginUrl.toString());
+    window.location.replace(redirectToHomePage.toString());
   };
 
   const logOutHandler = async () => {

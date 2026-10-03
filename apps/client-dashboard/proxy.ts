@@ -12,9 +12,9 @@ interface MeResponse {
     };
 }
 
-const redirectToLogin = (request: NextRequest) =>
+const redirectToHomePage = (request: NextRequest) =>
     NextResponse.redirect(
-        new URL("/login", process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE ?? request.nextUrl.origin),
+        new URL("/", process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE ?? request.nextUrl.origin),
     );
 
 export default clerkMiddleware(async (auth, request) => {
@@ -29,7 +29,7 @@ export default clerkMiddleware(async (auth, request) => {
     const { userId, getToken } = await auth();
 
     if (!userId) {
-        return redirectToLogin(request);
+        return redirectToHomePage(request);
     }
 
     try {
@@ -40,7 +40,7 @@ export default clerkMiddleware(async (auth, request) => {
         const token = await getToken();
 
         if (!token) {
-            return redirectToLogin(request);
+            return redirectToHomePage(request);
         }
 
         const meResponse = await fetch(new URL("/api/me", request.url), {
@@ -49,13 +49,13 @@ export default clerkMiddleware(async (auth, request) => {
         });
 
         if (!meResponse.ok) {
-            return redirectToLogin(request);
+            return redirectToHomePage(request);
         }
 
         const account = (await meResponse.json()) as MeResponse;
 
         if (!account.success || !account.data?.accountExists || account.data.role !== "client") {
-            return redirectToLogin(request);
+            return redirectToHomePage(request);
         }
 
         const isEditingProfile = request.nextUrl.pathname === "/profile/edit";
@@ -71,7 +71,7 @@ export default clerkMiddleware(async (auth, request) => {
         return NextResponse.next();
     } catch (error) {
         console.error("Client account status check failed.", error);
-        return redirectToLogin(request);
+        return redirectToHomePage(request);
     }
 });
 
