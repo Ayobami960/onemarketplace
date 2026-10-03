@@ -8,6 +8,7 @@ import { imageKit } from "../../config/imageKit.js";
 import { randomUUID } from "crypto";
 import { ACCOUNT_AUTH_CACHE_TTL_SECONDS, getAccountAuthCacheKey } from "../../config/constants.js";
 import { redis } from "../../config/redis.js";
+import { addConnects } from "../connects/connects.service.js";
 
 export const getFreelancerProfile = async (userId: string): Promise<FreelancerProfileData | null> => {
     const [result] = await db
@@ -109,6 +110,7 @@ const uploadPortfolioImages = async (
 
 export const saveFreelancerProfile = async (
     input: SaveFreelancerProfileInput,
+    isOnboarded: Boolean | undefined,
 ): Promise<FreelancerProfileData> => {
     const existingImages = await db
         .select({ cover_image: freelancer_portfolios.cover_image })
@@ -180,15 +182,12 @@ export const saveFreelancerProfile = async (
                 .delete(freelancer_portfolios)
                 .where(eq(freelancer_portfolios.freelancer_id, metadata.id));
 
-            const portfolios = await transaction
-                .insert(freelancer_portfolios)
-                .values(
-                    uploadedPortfolios.map((portfolio) => ({
-                        freelancer_id: metadata.id,
-                        ...portfolio,
-                    })),
-                )
-                .returning();
+            const portfolios = uploadedPortfolios.length
+                ? await transaction
+                    .insert(freelancer_portfolios)
+                    .values(uploadedPortfolios.map((portfolio) => ({ freelancer_id: metadata.id, ...portfolio })))
+                    .returning()
+                : [];
 
             return {
                 professional_title: metadata.professional_title,
@@ -226,6 +225,15 @@ export const saveFreelancerProfile = async (
         .filter((fileId) => fileId && !retainedImageIds.has(fileId));
 
     await deleteStorageAssets(staleImageIds);
+
+
+    try{
+        if(!isOnboarded){
+            await addConnects(input.userId);
+        }
+    } catch (error) {
+        console.log(error, "onboarding freelancer connects adding error")
+    }
 
     // Best-effort cache refresh: a Redis failure must not fail a committed save.
     try {

@@ -39,7 +39,7 @@ export const INITIAL_CONNECTS = 60;
 export const PROPOSAL_CONNECTS = 6;
 
 
-export const getConnectsCachKey = (userId: string): string =>
+export const getConnectsCacheKey = (userId: string): string =>
     `connects:${userId}:freelancer`;
 
 

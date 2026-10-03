@@ -237,7 +237,7 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(async (reques
         portfolios,
     };
 
-    const profile = await saveFreelancerProfile(input);
+    const profile = await saveFreelancerProfile(input, request.auth?.isOnboarded);
 
     const responseBody: ApiResponse<FreelancerProfileData> = {
         success: true,

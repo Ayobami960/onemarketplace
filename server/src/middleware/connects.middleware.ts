@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { asyncHandler } from "../utils/async-handler.js";
 import { ApiError } from "../utils/api-error.js";
-import { CONNECTS_CACHE_TTL_SECONDS, getConnectsCachKey } from "../config/constants.js";
+import { CONNECTS_CACHE_TTL_SECONDS, getConnectsCacheKey } from "../config/constants.js";
 import { redis } from "../config/redis.js";
 import { db } from "../database/clients.js";
 import { connects } from "../database/schema.js";
@@ -16,7 +16,7 @@ export const availableConnects: RequestHandler = asyncHandler( async (request, _
         return;
     }
     
-    const cacheKey = getConnectsCachKey(request.auth.userId);
+    const cacheKey = getConnectsCacheKey(request.auth.userId);
     const cachedConnects = await redis.get(cacheKey);
 
     if(cachedConnects !== null){
@@ -44,3 +44,5 @@ export const availableConnects: RequestHandler = asyncHandler( async (request, _
 
 },
 );
+
+
