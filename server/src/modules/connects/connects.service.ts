@@ -30,8 +30,14 @@ export const addConnects = async (freelancerId: string) => {
         return balance;
     });
 
-    if (balance) await cashBalance(freelancerId, balance.connects);
-    return  balance;
+    const currentBalance = balance ?? (await db
+        .select()
+        .from(connects)
+        .where(eq(connects.freelancer_id, freelancerId))
+        .limit(1))[0];
+
+    if (currentBalance) await cashBalance(freelancerId, currentBalance.connects);
+    return currentBalance;
 };
 
 export const chargeConnects = async(

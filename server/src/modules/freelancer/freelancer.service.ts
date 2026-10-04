@@ -110,7 +110,6 @@ const uploadPortfolioImages = async (
 
 export const saveFreelancerProfile = async (
     input: SaveFreelancerProfileInput,
-    isOnboarded: Boolean | undefined,
 ): Promise<FreelancerProfileData> => {
     const existingImages = await db
         .select({ cover_image: freelancer_portfolios.cover_image })
@@ -227,14 +226,7 @@ export const saveFreelancerProfile = async (
     await deleteStorageAssets(staleImageIds);
 
 
-    try{
-        if(!isOnboarded){
-            await addConnects(input.userId);
-        }
-    } catch (error) {
-        console.log(error, "onboarding freelancer connects adding error")
-    }
-
+    await addConnects(input.userId);
     // Best-effort cache refresh: a Redis failure must not fail a committed save.
     try {
         await redis.setEx(
