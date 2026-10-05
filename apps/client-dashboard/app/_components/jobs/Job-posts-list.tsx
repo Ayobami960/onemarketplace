@@ -1,11 +1,11 @@
 "use client"
 
-import { useAuth } from '@clerk/nextjs'
 import { Icon } from '@iconify/react'
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import Link from 'next/link'
 import React from 'react'
+import { clientApiFetch } from '@/app/utils/client-api'
 
 type JobPost = {
     id: string;
@@ -20,16 +20,10 @@ type JobPost = {
 }
 
 const JobPostsList = () => {
-    const { getToken } = useAuth();
     const { data: jobs = [], isLoading, error } = useQuery({
         queryKey: ["client-job-posts"],
         queryFn: async () => {
-            const token = await getToken();
-            if (!token) throw new Error("Your session has expired.");
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_SERVER_URL}/api/v1/jobs?role=client`,
-                { headers: { Authorization: `Bearer ${token}` } },
-            );
+            const response = await clientApiFetch("jobs?role=client");
 
             const result = await response.json();
             if (!response.ok) throw new Error(result.message || "Job posts could be loaded.");

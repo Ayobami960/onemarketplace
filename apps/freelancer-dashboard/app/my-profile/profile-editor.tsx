@@ -7,13 +7,12 @@ import type { FormEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
-import { getToken, useUser } from "@clerk/nextjs";
-import Image from "next/image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ProfileSkeleton } from "./profile-skelton";
 import { countries } from "../utils/countries";
 import { useRouter } from "next/navigation";
-import { UserData, UserResource } from "@clerk/nextjs/types";
+import { clientApiFetch } from "../utils/api";
+import { useClientAccount, type ClientAccount } from "../provider";
 
 const MAX_PORTFOLIO_PROJECTS = 12;
 const MAX_PORTFOLIO_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB, matches backend limit
@@ -220,19 +219,6 @@ const initialLanguages: Language[] = [
   { language: "English", proficiency: "Fluent" },
 ];
 
-const getServerUrl = () => {
-  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL?.replace(/\/$/, "");
-
-  if (!serverUrl) {
-    throw new Error("NEXT_PUBLIC_SERVER_URL is not configured.");
-  }
-
-  return serverUrl;
-};
-
-const getClientProfileEndpoint = () =>
-  `${getServerUrl()}/api/v1/freelancer/profile?role=freelancer`;
-
 const initialSkills = [
   "Next.js",
   "TypeScript",
@@ -291,27 +277,27 @@ const validateImageFile = (file: File): string | null => {
   return null;
 };
 
-/**
- * Shared logic for the authorized profile API: attaches the Clerk token and
- * unwraps the backend's ApiResponse envelope into user-facing errors.
- */
-const fetchProfileApi = async (
-  method: "GET" | "PUT",
-  token: string,
-  payload?: unknown,
+const fetchApi = async (
+  path: string,
+  method: "GET" | "PUT" | "POST",
+  payload?: Record<string, unknown> | FormData,
 ): Promise<unknown> => {
   let response: Response;
+  const sendRequest = () => clientApiFetch(path, {
+    method,
+    ...(payload instanceof FormData
+      ? { body: payload }
+      : payload
+        ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }
+        : {}),
+  });
 
   try {
-    response = await fetch(getClientProfileEndpoint(), {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(payload ? { "Content-Type": "application/json" } : {}),
-      },
-      body: payload ? JSON.stringify(payload) : undefined,
-      cache: "no-store",
-    });
+    response = await sendRequest();
+    if (response.status === 401) {
+      const refreshResponse = await clientApiFetch("auth/refresh", { method: "POST" });
+      if (refreshResponse.ok) response = await sendRequest();
+    }
   } catch {
     throw new Error(
       "The server could not be reached. Check your connection and try again.",
@@ -334,6 +320,9 @@ const fetchProfileApi = async (
 
   return result.data;
 };
+
+const fetchProfileApi = (method: "GET" | "PUT", payload?: Record<string, unknown>) =>
+  fetchApi("freelancer/profile?role=freelancer", method, payload);
 
 function SectionCard({
   id,
@@ -360,7 +349,13 @@ function SectionCard({
   );
 }
 
-function ProfilePreview({user, profileMetaData}: {user: UserResource | undefined | null, profileMetaData: any}) {
+function ProfilePreview({ account, avatarUrl, profileMetaData }: {
+  account: ClientAccount;
+  avatarUrl: string | null;
+  profileMetaData: FreelancerProfileData | null | undefined;
+}) {
+  const fullName = [account.firstName, account.lastName].filter(Boolean).join(" ") || account.email;
+  const initials = [account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U";
   const completedJobs = [
     {
       title: "Build a collaborative analytics dashboard",
@@ -424,16 +419,14 @@ function ProfilePreview({user, profileMetaData}: {user: UserResource | undefined
           <aside className="grid gap-5 lg:sticky lg:top-24">
             <section className="rounded-3xl border border-black/8 bg-white p-6 text-center">
               <div className=" mx-auto  w-28">
-               <Image
-                    src={user?.imageUrl || ""}
-                    alt={user?.firstName || ""}
-                    width={100}
-                    height={100}
-                    className="relative  h-28 w-28 rounded-full object-cover"
-                  />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={fullName} className="relative h-28 w-28 rounded-full object-cover" />
+                ) : (
+                  <span className="relative flex h-28 w-28 items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">{initials}</span>
+                )}
               </div>
               <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em]">
-                {user?.fullName}
+                {fullName}
               </h1>
               <p className="mt-2 text-sm leading-6 text-[#656b63]">
                {profileMetaData?.professional_title}
@@ -442,7 +435,7 @@ function ProfilePreview({user, profileMetaData}: {user: UserResource | undefined
                 <Icon icon="solar:map-point-linear" width="16" />
                   {profileMetaData?.city}, {" "}
                   {countries.find(
-                    (country) => country.code === user?.unsafeMetadata?.country,
+                    (country) => country.code === profileMetaData?.country,
                   )?.name ?? ""}
               </p>
 
@@ -523,7 +516,7 @@ function ProfilePreview({user, profileMetaData}: {user: UserResource | undefined
                 <div className="shrink-0 text-left sm:text-right">
                   <p className="text-xs text-[#7c8179]">Hourly rate</p>
                   <p className="mt-1 text-xl font-semibold">
-                    ${parseInt(profileMetaData?.hourly_rate)}
+                    ${parseInt(profileMetaData?.hourly_rate ?? "0", 10)}
                     <span className="text-sm font-medium text-[#7c8179]">
                       /hr
                     </span>
@@ -689,7 +682,8 @@ export function ProfileEditor({
 }: {
   initialEditing?: boolean;
 }) {
-  const { user, isLoaded } = useUser();
+  const account = useClientAccount();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const isEditing = initialEditing;
   const queryClient = useQueryClient();
 
@@ -776,21 +770,12 @@ export function ProfileEditor({
     refetch: refetchProfileMetaData,
   } = useQuery({
     queryKey: ["profile-metadata"],
-    enabled: Boolean(user),
+    enabled: Boolean(account),
     retry: 1,
     staleTime: 30_000,
 
     queryFn: async () => {
-      const token = await getToken();
-
-      if (!token) {
-        throw new Error("Your session has expired. Please sign in again.");
-      }
-
-      return (await fetchProfileApi(
-        "GET",
-        token,
-      )) as FreelancerProfileData;
+      return (await fetchProfileApi("GET")) as FreelancerProfileData | null;
     },
   });
 
@@ -802,10 +787,8 @@ export function ProfileEditor({
 
   useEffect(() => {
     if (
-      !isLoaded ||
       profileMetaDataLoading ||
       profileMetaDataError ||
-      !user ||
       hasInitializedProfile.current
     ) {
       return;
@@ -836,17 +819,15 @@ export function ProfileEditor({
 
     const nextCountry =
       profileMetaData?.country ??
-      (typeof user.unsafeMetadata?.country === "string"
-        ? user.unsafeMetadata.country
-        : "");
+      account.country;
 
     /*
      * Put the API values into React Hook Form.
      */
 
     reset({
-      firstName: user.firstName ?? "",
-      lastName: user.lastName ?? "",
+      firstName: account.firstName,
+      lastName: account.lastName,
 
       country: nextCountry,
 
@@ -898,12 +879,11 @@ export function ProfileEditor({
 
     hasInitializedProfile.current = true;
   }, [
-    isLoaded,
+    account,
     profileMetaData,
     profileMetaDataLoading,
     profileMetaDataError,
     reset,
-    user,
   ]);
 
   /*
@@ -1129,20 +1109,6 @@ export function ProfileEditor({
     mutationFn: async (
       values: FreelancerProfileFormValues,
     ) => {
-      if (!user) {
-        throw new Error(
-          "Your account could not be loaded.",
-        );
-      }
-
-      const token = await getToken();
-
-      if (!token) {
-        throw new Error(
-          "Your session has expired. Please sign in again.",
-        );
-      }
-
       const {
         firstName,
         lastName,
@@ -1150,22 +1116,13 @@ export function ProfileEditor({
         ...freelancer_metadata
       } = values;
 
-      /*
-       * Update Clerk user information (names only — the country lives in
-       * the backend database, mirroring it into unsafeMetadata caused the
-       * saved country to be silently overwritten with a stale value).
-       */
-
-      await user.update({
-        firstName,
-        lastName,
-      });
+      await fetchApi("auth/me", "PUT", { firstName, lastName });
 
       /*
        * Update freelancer profile in backend.
        */
 
-      return (await fetchProfileApi("PUT", token, {
+      return (await fetchProfileApi("PUT", {
         freelancer_metadata,
 
         freelancer_portfolios: portfolios.map(
@@ -1292,7 +1249,10 @@ export function ProfileEditor({
     }
 
     try {
-      await user?.setProfileImage({ file });
+      const formData = new FormData();
+      formData.append("avatar", file);
+      const uploaded = await fetchApi("upload/avatar", "POST", formData) as { url: string };
+      setAvatarUrl(uploaded.url);
       toast.success("Profile photo updated");
     } catch (error) {
       toast.error("The profile photo could not be updated.");
@@ -1446,7 +1406,7 @@ export function ProfileEditor({
 
   const strength =
     (
-      Math.min(user?.hasImage ? 10 : 0) +
+      Math.min(avatarUrl ? 10 : 0) +
     personalFields.filter(Boolean).length * 3.75 +
     professionalFields.filter(Boolean).length * 5 +
     Math.min(skills.length / 10, 1) * 15 +
@@ -1456,7 +1416,7 @@ export function ProfileEditor({
 
 
   const strengthSuggestions = [
-    !user?.hasImage && "Add a real profile  phono.",
+    !avatarUrl && "Add a profile photo.",
     personalFields.some((field) => !field) && "Complete your personal details.",
     professionalFields.some((field) => !field) && "Complete every professional field.",
     skills.length < 10 && `Add ${10 - skills.length} more skills.`,
@@ -1538,7 +1498,6 @@ export function ProfileEditor({
    */
 
   if (
-    !isLoaded ||
     profileMetaDataLoading
   ) {
     return (
@@ -1555,7 +1514,8 @@ export function ProfileEditor({
 
   if (!isEditing) {
     return <ProfilePreview
-    user={user}
+    account={account}
+    avatarUrl={avatarUrl}
     profileMetaData={profileMetaData}
     />;
   }
@@ -1666,19 +1626,11 @@ export function ProfileEditor({
             <section className="rounded-2xl border border-black/8 bg-white p-5 text-center">
               <div className="relative mx-auto h-24 w-24">
               
-                {user?.imageUrl ? (
-                  <Image
-                    src={user.imageUrl}
-                    alt={user?.firstName || ""}
-                    width={100}
-                    height={100}
-                    className="relative  h-24 w-24 rounded-full object-cover"
-                  />
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={[account.firstName, account.lastName].filter(Boolean).join(" ")} className="relative h-24 w-24 rounded-full object-cover" />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">
-                    {(user?.firstName?.[0] ?? "")
-                      .concat(user?.lastName?.[0] ?? "")
-                      .toUpperCase() || "U"}
+                    {[account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U"}
                   </span>
                 )}
                 <label className="absolute right-0 bottom-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[#252724] text-white">
@@ -1694,7 +1646,7 @@ export function ProfileEditor({
               </div>
 
               <h2 className="mt-4 text-lg font-semibold">
-                {user?.fullName}
+                {[account.firstName, account.lastName].filter(Boolean).join(" ") || account.email}
               </h2>
 
               <p className="mt-1 text-xs text-[#777c74]">

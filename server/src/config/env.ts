@@ -20,6 +20,13 @@ const parsePort = (value: string | undefined): number => {
     return port;
 }
 
+const parseOptionalBoolean = (value: string | undefined, name: string): boolean | undefined => {
+    if (value === undefined || value === "") return undefined;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    throw new Error(`${name} must be either true or false.`);
+}
+
 const parsePositiveInt = (value: string | undefined, defaultValue: number): number => {
     if (value === undefined || value === "") {
         return defaultValue;
@@ -34,11 +41,73 @@ const parsePositiveInt = (value: string | undefined, defaultValue: number): numb
     return parsed;
 }
 
+const parseDuration = (value: string | undefined, fallback: string): number => {
+    const input = value || fallback;
+    const match = /^(\d+)(s|m|h|d)$/.exec(input);
+    if (!match) throw new Error("Token TTL must use seconds, minutes, hours, or days (for example 15m).");
+    const amount = Number(match[1]);
+    const multiplier = match[2] === "s" ? 1 : match[2] === "m" ? 60 : match[2] === "h" ? 3600 : 86400;
+    return amount * multiplier;
+}
+
+const nodeEnv = process.env.NODE_ENV || "development";
+const requiredSecret = (value: string | undefined, name: string, developmentFallback: string): string => {
+    const secret = value || (nodeEnv === "production" ? "" : developmentFallback);
+    if (secret.length < 32) throw new Error(`${name} must be at least 32 characters.`);
+    return secret;
+};
+
+const configuredOrigins = [
+    process.env.ORIGINS_CLIENT_DASHBOARD,
+    process.env.ORIGINS_CLIENT_LANDING_PAGE,
+    process.env.ORIGINS_FREELANCER_DASHBOARD,
+    process.env.ORIGINS_AGENCY_DASHBOARD,
+    process.env.ORIGINS_ADMIN_DASHBOARD,
+    ...(process.env.API_ALLOWED_ORIGINS || "").split(","),
+].map((origin) => origin?.trim()).filter((origin): origin is string => Boolean(origin));
+
+const allowedOrigins = [...new Set(configuredOrigins.map((origin) => {
+    try {
+        const url = new URL(origin);
+        if (
+            !["http:", "https:"].includes(url.protocol) ||
+            url.username ||
+            url.password ||
+            (url.pathname !== "/" && url.pathname !== "") ||
+            url.search ||
+            url.hash
+        ) {
+            throw new Error();
+        }
+        return url.origin;
+    } catch {
+        throw new Error("ORIGINS_* and API_ALLOWED_ORIGINS must contain valid absolute HTTP(S) origins.");
+    }
+}))];
+
+if (nodeEnv === "production" && allowedOrigins.length === 0) {
+    throw new Error("At least one ORIGINS_* value must be configured in production.");
+}
+
 export const env = {
     port: parsePort(process.env.PORT),
-    clerkSecretKey: process.env.CLERK_SECRET_KEY,
-    clerkWebhookSigningSecret: process.env.CLERK_WEBHOOK_SIGNING_SECRET || undefined,
-    nodeEnv: process.env.NODE_ENV || 'development',
+    nodeEnv,
+    apiPrefix: "/api/v1",
+    allowedOrigins,
+    jwtAccessSecret: requiredSecret(process.env.JWT_ACCESS_SECRET, "JWT_ACCESS_SECRET", "development-access-secret-change-me-32-bytes"),
+    otpHmacSecret: requiredSecret(process.env.OTP_HMAC_SECRET, "OTP_HMAC_SECRET", "development-otp-secret-change-me-32-bytes"),
+    accessTokenTtlSeconds: parseDuration(process.env.ACCESS_TOKEN_TTL, "15m"),
+    refreshTokenTtlSeconds: parseDuration(process.env.REFRESH_TOKEN_TTL, "30d"),
+    cookieDomain: process.env.COOKIE_DOMAIN || undefined,
+    smtp: {
+        host: process.env.SMTP_HOST || undefined,
+        port: process.env.SMTP_PORT ? parsePort(process.env.SMTP_PORT) : undefined,
+        secure: parseOptionalBoolean(process.env.SMTP_SECURE, "SMTP_SECURE"),
+        user: process.env.SMTP_USER || undefined,
+        pass: process.env.SMTP_PASS || undefined,
+        from: process.env.SMTP_FROM || undefined,
+    },
+    superAdminEmail: process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() || undefined,
     redis: {
         host: process.env.REDIS_HOST ?? "localhost",
         port: parsePort(process.env.REDIS_PORT ?? "6379"),

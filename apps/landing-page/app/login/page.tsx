@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BrandMark } from "../_components/landing-page/brand-mark";
-import { LoginGate } from "./login-gate";
+import { LoginForm } from "./login-form"
 
 export default function LoginPage() {
   return (
@@ -24,7 +24,7 @@ export default function LoginPage() {
       </header>
 
       <main className="relative z-10 flex flex-1 items-center justify-center px-5 py-10 sm:px-8">
-        <LoginGate />
+        <LoginForm />
       </main>
     </div>
   );

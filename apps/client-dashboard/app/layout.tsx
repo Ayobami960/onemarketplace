@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Provider } from "@/app/provider";
 import { Toaster } from "sonner";
 
@@ -23,14 +22,12 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} antialiased`}>
-      <body>
-      <ClerkProvider>
+    <html lang="en" className={`${dmSans.variable} antialiased`} suppressHydrationWarning>
+      <body suppressHydrationWarning>
        <Provider>
          {children}
          <Toaster/>
        </Provider>
-      </ClerkProvider>
       </body>
     </html>
   );

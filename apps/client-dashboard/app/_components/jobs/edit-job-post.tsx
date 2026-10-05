@@ -1,10 +1,10 @@
 "use client";
 
-import { useAuth } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query';
 import { InitialJobPost, JobPostForm } from './job-post-form';
 import Link from 'next/link';
 import { Icon } from '@iconify/react';
+import { clientApiFetch } from '@/app/utils/client-api';
 
 type JobPostResponse = {
       id: string;
@@ -20,19 +20,13 @@ type JobPostResponse = {
 }
 
 const EditJobPost = ({jobId}: {jobId: string}) => {
-    const {getToken} = useAuth();
     const { data: job, isLoading, error } = useQuery({
         queryKey: ["client-job-post", jobId],
         queryFn: async () => {
-            const token = await getToken();
-            if (!token) throw new Error("Your session has expired.");
-            
-            const url = `${process.env.NEXT_PUBLIC_SERVER_URL}/api/v1/jobs/${jobId}?role=client`;
+            const url = `jobs/${jobId}?role=client`;
             
             try {
-                const response = await fetch(url, {
-                    headers: { Authorization: `Bearer ${token}` },
-                });
+                const response = await clientApiFetch(url);
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));

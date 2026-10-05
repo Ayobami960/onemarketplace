@@ -1,25 +1,70 @@
 
-import { relations } from "drizzle-orm";
-import { pgTable, pgEnum, uuid, text, boolean, timestamp, numeric, jsonb, integer } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import { pgTable, pgEnum, uuid, text, boolean, timestamp, numeric, jsonb, integer, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 export const accountRole = pgEnum("account_role", ["FREELANCER", "CLIENT"])
+export const verificationPurpose = pgEnum("verification_purpose", ["email_verification", "password_reset"])
 
 export const accounts = pgTable("accounts", {
     id: uuid("id").defaultRandom().primaryKey(),
     auth_id: text("auth_id").notNull().unique(),
     email: text("email").notNull(),
+    first_name: text("first_name"),
+    last_name: text("last_name"),
+    country: text("country"),
+    password_hash: text("password_hash"),
+    email_verified_at: timestamp("email_verified_at", { withTimezone: true }),
+    failed_login_count: integer("failed_login_count").default(0).notNull(),
+    locked_until: timestamp("locked_until", { withTimezone: true }),
+    last_login_at: timestamp("last_login_at", { withTimezone: true }),
     role: accountRole().default("CLIENT").notNull(),
     identityVerified: boolean("identityVerified").default(false).notNull(),
     paymentMethodVerified: boolean("paymentMethodVerified").default(false).notNull(),
     isOnboardingComplete: boolean("isOnboardingComplete").default(false).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow()
-});
+}, (table) => [uniqueIndex("accounts_email_unique").on(sql`lower(${table.email})`)]);
+
+export const sessions = pgTable("sessions", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    account_id: text("account_id").notNull().references(() => accounts.auth_id, { onDelete: "cascade" }),
+    family_id: uuid("family_id").notNull(),
+    token_hash: text("token_hash").notNull(),
+    user_agent: text("user_agent"),
+    ip: text("ip"),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revoked_at: timestamp("revoked_at", { withTimezone: true }),
+    replaced_by: uuid("replaced_by"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+    uniqueIndex("sessions_token_hash_unique").on(table.token_hash),
+    index("sessions_account_id_idx").on(table.account_id),
+    index("sessions_family_id_idx").on(table.family_id),
+    index("sessions_expires_at_idx").on(table.expires_at),
+]);
+
+export const verification_codes = pgTable("verification_codes", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    account_id: text("account_id").notNull().references(() => accounts.auth_id, { onDelete: "cascade" }),
+    purpose: verificationPurpose().notNull(),
+    code_hash: text("code_hash").notNull(),
+    expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    consumed_at: timestamp("consumed_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+    index("verification_codes_account_purpose_idx").on(table.account_id, table.purpose),
+    index("verification_codes_expires_at_idx").on(table.expires_at),
+]);
 
 
 export const client_metadata = pgTable("client_metadata", {
     id: uuid("id").defaultRandom().primaryKey(),
     auth_id: text("auth_id").notNull(),
+    first_name: text("first_name"),
+    last_name: text("last_name"),
+    country: text("country"),
+    avatar_url: text("avatar_url"),
     role: text("role").notNull(),
     company_name: text("company_name").notNull(),
     company_website: text("company_website").notNull(),
@@ -160,6 +205,21 @@ export const connects = pgTable("connects", {
     created_at: timestamp("created_at", {withTimezone: true}).defaultNow(),
     updated_at: timestamp("updated_at", {withTimezone: true}).defaultNow(),
 });
+
+export const freelancer_proposals = pgTable("freelancer_proposals", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    job_id: uuid("job_id").notNull().references(() => job_posts.id, { onDelete: "cascade" }),
+    freelancer_id: text("freelancer_id").notNull().references(() => accounts.auth_id, { onDelete: "cascade" }),
+    bid_amount: numeric("bid_amount", { precision: 9, scale: 2 }).notNull(),
+    delivery_time: text("delivery_time").notNull(),
+    cover_letter: text("cover_letter").notNull(),
+    status: text("status").notNull().default("SUBMITTED"),
+    connects_charged: integer("connects_charged").notNull().default(6),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+}, (table) => [
+    uniqueIndex("freelancer_proposals_job_freelancer_unique").on(table.job_id, table.freelancer_id),
+]);
 
 
 export const connects_history = pgTable("connects_history", {

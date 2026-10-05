@@ -34,12 +34,16 @@ limits have validated defaults matching the local project configuration; set
 `FREELANCER_MAX_DESCRIPTION_LENGTH`,
 `FREELANCER_MAX_PORTFOLIO_DESCRIPTION_LENGTH`, or
 `FREELANCER_MAX_BASE64_IMAGE_BYTES` only when overriding those defaults. Any
-configured limits must be positive integers. Configure `CLERK_SECRET_KEY`,
-`CLERK_WEBHOOK_SIGNING_SECRET`, `IMAGEKIT_PRIVATE_KEY`, `IMAGEKIT_PUBLIC_KEY`,
-and `IMAGEKIT_END_POINT` if the corresponding integrations are enabled. Redis is
-optional; set `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, and `REDIS_DB` when
-using a hosted Redis service. Without Redis, the API logs the connection failure
-and continues without the auth cache.
+configured limits must be positive integers. Configure `JWT_ACCESS_SECRET`,
+`OTP_HMAC_SECRET`, the five `ORIGINS_*` dashboard/landing-page values, and
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`
+for first-party authentication. Gmail requires an App Password and a sender
+address matching `SMTP_USER`; other providers require an authorized sending
+domain with valid SPF/DKIM records. Configure `IMAGEKIT_PRIVATE_KEY`,
+`IMAGEKIT_PUBLIC_KEY`, and `IMAGEKIT_END_POINT` if the corresponding integrations
+are enabled. Redis is optional; set `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`,
+and `REDIS_DB` when using a hosted Redis service. Without Redis, the API falls
+back to database-backed account lockout and does not use a session cache.
 
 After deployment, verify `GET /` for the `API is running` response, `GET
 /health` for function availability, and `GET /api/v1/health` for database

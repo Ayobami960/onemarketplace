@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { createServer, type Server } from "node:http";
 import { API_PREFIX, SERVICE_NAME } from "./config/constants.js";
 import { env } from "./config/env.js";
@@ -8,6 +9,7 @@ import { notFoundHandler } from "./middleware/not-found-middleware.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { connectDatabase, disconnectDatabase } from "./database/clients.js";
+import { verifyMailer } from "./modules/auth/mailer.js";
 
 const isVercel = process.env.VERCEL === "1";
 
@@ -17,15 +19,17 @@ const isVercel = process.env.VERCEL === "1";
 
 const app = express();
 
-type RequestWithRawBody = Express.Request & { rawBody?: Buffer };
-
 app.disable("x-powered-by");
+app.use(helmet());
 
 app.use(
     cors({
-        origin: (_origin, callback) => {
-            // Allows all origins (including no-origin requests like curl/mobile apps).
-            callback(null, true);
+        origin: (origin, callback) => {
+            if (!origin || env.allowedOrigins.includes(origin)) {
+                callback(null, true);
+                return;
+            }
+            callback(new Error("Origin is not allowed by CORS."));
         },
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -34,12 +38,7 @@ app.use(
 );
 
 app.use(
-    express.json({
-        limit: "2mb",
-        verify: (request, _response, body) => {
-            (request as RequestWithRawBody).rawBody = Buffer.from(body);
-        },
-    })
+    express.json({ limit: "2mb" })
 );
 app.use(express.urlencoded({ extended: true }));
 
@@ -57,6 +56,8 @@ let servicesReady: Promise<void> | undefined;
  */
 const initServices = (): Promise<void> => {
     servicesReady ??= (async () => {
+        await verifyMailer();
+
         // The database is required: fail fast if it cannot be reached.
         await connectDatabase();
 

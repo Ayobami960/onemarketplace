@@ -1,384 +1,173 @@
 "use client";
 
 import Link from "next/link";
-import { SubmitEvent, useEffect, useState } from "react";
+import { useEffect, useState, SubmitEvent } from "react";
 import styles from "../signup/signup.module.css";
-import { useSignIn } from "@clerk/nextjs";
-
-type MfaMethod = "email_code" | "phone_code" | "totp" | "backup_code";
-
-const isMfaMethod = (method: string): method is MfaMethod =>
-  method === "email_code" ||
-  method === "phone_code" ||
-  method === "totp" ||
-  method === "backup_code";
+import { postAuth, redirectToDashboard } from "../_components/auth-api";
 
 export function LoginForm() {
-  const { signIn, fetchStatus } = useSignIn();
+    const [email, setEmail] = useState("");
+    const [code, setCode] = useState("");
+    const [verifyEmail, setVerifyEmail] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [status, setStatus] = useState("");
+    const [isError, setIsError] = useState(false);
+    const [resendCooldown, setResendCooldown] = useState(0);
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [status, setStatus] = useState("");
-  const [isError, setIsError] = useState(false);
-  const [mfaRequired, setMfaRequired] = useState(false);
-  const [mfaMethod, setMfaMethod] = useState<MfaMethod | "">("");
-  const [mfaCode, setMfaCode] = useState("");
-  const isLoading = fetchStatus === "fetching";
-  const supportedMfaMethods = signIn?.supportedSecondFactors
-    .map(({ strategy }) => strategy)
-    .filter(isMfaMethod) ?? [];
+    useEffect(() => {
+        if (resendCooldown <= 0) return;
+        const timer = window.setTimeout(() => setResendCooldown((value) => value - 1), 1000);
+        return () => window.clearTimeout(timer);
+    }, [resendCooldown]);
 
-  function redirectToDashboard(role: unknown) {
-    const dashboardUrl = role === "client"
-      ? process.env.NEXT_PUBLIC_CLIENT_DASHBOARD
-      : process.env.NEXT_PUBLIC_FREELANCER_DASHBOARD;
-
-      if(!dashboardUrl){
-        throw new Error("Something went wrong")
-      }
-
-      window.location.assign(dashboardUrl)
-  }
-
-  async function finalizeSignIn() {
-    if (!signIn || signIn.status !== "complete" || !signIn.createdSessionId) {
-      throw new Error("Sign-in needs another verification step before it can finish.");
-    }
-
-    const { error } = await signIn.finalize({
-      navigate: async ({ session }) => {
-        redirectToDashboard(session?.user?.unsafeMetadata?.role);
-      },
-    });
-
-    if (error) throw error;
-  }
-
-  async function sendMfaCode(method: MfaMethod) {
-    if (!signIn) return;
-
-    const { error } = method === "email_code"
-      ? await signIn.mfa.sendEmailCode()
-      : await signIn.mfa.sendPhoneCode();
-
-    if (error) throw error;
-  }
-
-  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatus("");
-    setIsError(false);
-
-    if(!signIn){
-      setIsError(true);
-      setStatus("Authentication is still loading.")
-      return;
-    }
-
-    const formData = new FormData(event.currentTarget);
-
-    try {
-      if (mfaRequired) {
-        if (!mfaMethod) {
-          throw new Error("Choose a verification method to continue.");
+    async function handleLogin(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const emailAddress = String(form.get("email") ?? "").trim().toLowerCase();
+        setEmail(emailAddress);
+        setIsLoading(true);
+        setStatus("");
+        setIsError(false);
+        try {
+            const account = await postAuth<{ role: "client" | "freelancer" }>("login", {
+                email: emailAddress,
+                password: String(form.get("password") ?? ""),
+            });
+            redirectToDashboard(account.role);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "We could not log you in.";
+            if (message === "EMAIL_NOT_VERIFIED") {
+                setVerifyEmail(true);
+                try {
+                    await postAuth("resend-otp", { email: emailAddress });
+                    setResendCooldown(60);
+                    setStatus("Verify your email with the code we sent to your inbox.");
+                    return;
+                } catch (resendError) {
+                    setResendCooldown(60);
+                    setStatus(resendError instanceof Error ? resendError.message : "We could not send a verification code.");
+                }
+            } else {
+                setStatus(message);
+            }
+            setIsError(true);
+        } finally {
+            setIsLoading(false);
         }
+    }
 
-        const verification = mfaMethod === "email_code"
-          ? await signIn.mfa.verifyEmailCode({ code: mfaCode.trim() })
-          : mfaMethod === "phone_code"
-            ? await signIn.mfa.verifyPhoneCode({ code: mfaCode.trim() })
-            : mfaMethod === "totp"
-              ? await signIn.mfa.verifyTOTP({ code: mfaCode.trim() })
-              : await signIn.mfa.verifyBackupCode({ code: mfaCode.trim() });
-
-        if (verification.error) throw verification.error;
-        await finalizeSignIn();
-        return;
-      }
-
-      const {error} = await signIn.password({
-        emailAddress: String(formData.get("email") ?? "").trim(),
-        password: String(formData.get("password") ?? "")
-      });
-
-      if(error) throw error;
-
-      if (signIn.status === "complete" && signIn.createdSessionId) {
-        await finalizeSignIn();
-        return;
-      }
-
-      if (signIn.status === "needs_client_trust" || signIn.status === "needs_second_factor") {
-        const availableMfaMethods = signIn.supportedSecondFactors
-          .map(({ strategy }) => strategy)
-          .filter(isMfaMethod);
-        const nextMfaMethod = availableMfaMethods.find((method) => method === "email_code")
-          ?? availableMfaMethods.find((method) => method === "phone_code")
-          ?? availableMfaMethods[0];
-
-        if (!nextMfaMethod) {
-          throw new Error("Your account needs another verification method that is not available here.");
+    async function handleVerify(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+        setIsLoading(true);
+        setStatus("");
+        setIsError(false);
+        try {
+            const account = await postAuth<{ role: "client" | "freelancer" }>("verify-email", { email, code });
+            redirectToDashboard(account.role);
+        } catch (error) {
+            setIsError(true);
+            setStatus(error instanceof Error ? error.message : "We could not verify that code.");
+        } finally {
+            setIsLoading(false);
         }
+    }
 
-        setMfaRequired(true);
-        setMfaMethod(nextMfaMethod);
-        setMfaCode("");
-
-        if (nextMfaMethod === "email_code" || nextMfaMethod === "phone_code") {
-          await sendMfaCode(nextMfaMethod);
-          setStatus("A verification code was sent. Enter it below to finish signing in.");
-        } else {
-          setStatus(nextMfaMethod === "totp"
-            ? "Enter the code from your authenticator app to finish signing in."
-            : "Enter a backup code to finish signing in.");
+    async function resendCode() {
+        if (!email || resendCooldown > 0 || isLoading) return;
+        setIsLoading(true);
+        setStatus("");
+        setIsError(false);
+        try {
+            await postAuth("resend-otp", { email });
+            setResendCooldown(60);
+            setStatus("If this account needs verification, a new code will be sent.");
+        } catch (error) {
+            setResendCooldown(60);
+            setIsError(true);
+            setStatus(error instanceof Error ? error.message : "We could not send a new code.");
+        } finally {
+            setIsLoading(false);
         }
-        return;
-      }
-
-      throw new Error("Sign-in needs another verification step before it can finish.");
-    } catch (error) {
-      setIsError(true);
-      setStatus(
-        error instanceof Error ? error.message : "We could not log you in. Please check your credentials."
-      );
     }
-  }
 
-  async function handleMfaMethodChange(method: MfaMethod) {
-    setMfaMethod(method);
-    setMfaCode("");
-    setStatus("");
-    setIsError(false);
+    return (
+        <div className="w-full max-w-md text-left">
+            <div className="text-center">
+                <span className="inline-flex rounded-full bg-[#e9f4e6] px-3 py-1.5 text-xs font-semibold text-[#4f754d]">
+                    Welcome back
+                </span>
+                <h1 className={`${styles.formTitle} mt-4 text-[#171916] text-[clamp(1.65rem,5vw,2.25rem)]!`}>
+                    Log in to OneMarketplace
+                </h1>
+                <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#72766f]">
+                    Continue to your projects, conversations, and opportunities.
+                </p>
+            </div>
+            {!verifyEmail ? (
+                <form className="mt-8 space-y-5" onSubmit={handleLogin}>
+                    <label className="grid gap-2 text-sm font-semibold text-[#30332f]">Email address
+                        <input 
+                        name="email" 
+                        type="email" 
+                        autoComplete="email" 
+                        required 
+                        className="h-12 rounded-xl border border-black/13 bg-white px-4 font-normal outline-none transition focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]" 
+                        placeholder="Enter your email" 
+                    />
+                    </label>
+                    <label className="grid gap-2 text-sm font-semibold text-[#30332f]">
+                        <span className="flex items-center justify-between">
+                            Password
+                            <Link 
+                            href="/forgot-password" className="text-xs font-semibold text-[#477445] hover:underline!">
+                                Forgot password?
+                            </Link>
+                        </span>
 
-    if (method === "email_code" || method === "phone_code") {
-      try {
-        await sendMfaCode(method);
-        setStatus("A verification code was sent.");
-      } catch (error) {
-        setIsError(true);
-        setStatus(error instanceof Error ? error.message : "Could not send a verification code.");
-      }
-    }
-  }
+                        {/* Added a relative container here to anchor the absolute button to the input box */}
+                        <div className="relative flex items-center">
+                            <input
+                                name="password"
+                                type={showPassword ? "text" : "password"}
+                                autoComplete="current-password"
+                                required
+                                className="h-12 w-full rounded-xl border border-black/13 bg-white pl-4 pr-16 font-normal outline-none transition focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]"
+                                placeholder="Enter your password"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((value) => !value)}
+                                className="absolute right-4 cursor-pointer text-xs font-semibold text-[#52764f]"
+                                aria-label={showPassword ? "Hide password" : "Show password"}
+                            >
+                                {showPassword ? "Hide" : "Show"}
+                            </button>
+                        </div>
+                    </label>
 
-  async function handleSocialLogin(provider: "Google" | "GitHub") {
-    setStatus("");
-    setIsError(false);
-
-    if(!signIn) return;
-
-    const {error} = await signIn.sso({
-      strategy: provider === "Google" ? "oauth_google" : "oauth_github",
-      redirectUrl: "/login",
-      redirectCallbackUrl: "/login"
-    })
-
-    if(error){
-      setIsError(true);
-      setStatus(error.message);
-    }
-  }
-
-  return (
-    <div className="w-full max-w-md text-left">
-      <div className="text-center">
-        <span className="inline-flex rounded-full bg-[#e9f4e6] px-3 py-1.5 text-xs font-semibold text-[#4f754d]">
-          Welcome back
-        </span>
-        <h1
-          className={`${styles.formTitle} mt-4 whitespace-nowrap text-[#171916] text-[clamp(1.65rem,5vw,2.25rem)]!`}
-        >
-          Log in to OneMarketplace
-        </h1>
-        <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#72766f]">
-          Continue to your projects, conversations, and opportunities.
-        </p>
-      </div>
-
-      <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => handleSocialLogin("Google")}
-            className="flex h-12 cursor-pointer items-center justify-center gap-3 rounded-xl border border-black/13 bg-white px-4 text-sm font-semibold text-[#30332f] transition hover:border-black/20 hover:bg-[#f8f9f7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#4c7849]"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden="true">
-              <path
-                fill="#4285F4"
-                d="M21.6 12.23c0-.71-.06-1.4-.18-2.06H12v3.9h5.38a4.6 4.6 0 0 1-2 3.02v2.53h3.24c1.9-1.75 2.98-4.33 2.98-7.39Z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 22c2.7 0 4.98-.9 6.64-2.43l-3.24-2.52c-.9.6-2.05.96-3.4.96-2.61 0-4.82-1.76-5.61-4.13H3.05v2.6A10 10 0 0 0 12 22Z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M6.39 13.88A6 6 0 0 1 6.07 12c0-.65.11-1.29.32-1.88v-2.6H3.05A10 10 0 0 0 2 12c0 1.61.39 3.14 1.05 4.48l3.34-2.6Z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.99c1.47 0 2.79.5 3.83 1.5l2.88-2.88A9.65 9.65 0 0 0 12 2a10 10 0 0 0-8.95 5.52l3.34 2.6C7.18 7.75 9.39 5.99 12 5.99Z"
-              />
-            </svg>
-            Google
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleSocialLogin("GitHub")}
-            className="flex h-12 cursor-pointer items-center justify-center gap-3 rounded-xl border border-black/13 bg-white px-4 text-sm font-semibold text-[#30332f] transition hover:border-black/20 hover:bg-[#f8f9f7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#4c7849]"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49 0-.24-.01-1.05-.01-1.91-2.78.62-3.37-1.21-3.37-1.21-.46-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.9 1.57 2.34 1.12 2.91.85.09-.66.35-1.12.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.3 9.3 0 0 1 12 6.92a9.3 9.3 0 0 1 2.5.35c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.8 0 .27.18.59.69.49A10.24 10.24 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z" />
-            </svg>
-            GitHub
-          </button>
-        </div>
-
-        <div className="flex items-center gap-4 py-1">
-          <span className="h-px flex-1 bg-black/10"></span>
-          <span className="text-xs font-medium text-[#8a8e87]">
-            or continue with email
-          </span>
-          <span className="h-px flex-1 bg-black/10"></span>
-        </div>
-
-        {!mfaRequired && <label className="grid gap-2 text-sm font-semibold text-[#30332f]">
-          Email address
-          <input
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            className="h-12 rounded-xl border border-black/13 bg-white px-4 font-normal outline-none transition placeholder:text-[#a2a59f] focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]"
-            placeholder="you@example.com"
-          />
-        </label>}
-
-        {!mfaRequired && <label className="grid gap-2 text-sm font-semibold text-[#30332f]">
-          <span className="flex items-center justify-between">
-            Password
-            <Link
-              href="/forgot-password"
-              className="text-xs font-semibold text-[#477445] hover:underline!"
-            >
-              Forgot password?
-            </Link>
-          </span>
-          <span className="relative">
-            <input
-              name="password"
-              type={showPassword ? "text" : "password"}
-              autoComplete="current-password"
-              required
-              className="h-12 w-full rounded-xl border border-black/13 bg-white px-4 pr-20 font-normal outline-none transition placeholder:text-[#a2a59f] focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]"
-              placeholder="Enter your password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((value) => !value)}
-              className="absolute inset-y-0 right-4 cursor-pointer text-xs font-semibold text-[#52764f]"
-              aria-label={showPassword ? "Hide password" : "Show password"}
-            >
-              {showPassword ? "Hide" : "Show"}
-            </button>
-          </span>
-        </label>}
-
-        {mfaRequired && (
-          <>
-            {supportedMfaMethods.length > 1 && (
-              <label className="grid gap-2 text-sm font-semibold text-[#30332f]">
-                Verification method
-                <select
-                  value={mfaMethod}
-                  onChange={(event) => void handleMfaMethodChange(event.target.value as MfaMethod)}
-                  className="h-12 rounded-xl border border-black/13 bg-white px-4 font-normal outline-none focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]"
-                >
-                  {supportedMfaMethods.map((method) => (
-                    <option key={method} value={method}>
-                      {method === "email_code" ? "Email code"
-                        : method === "phone_code" ? "Text message"
-                          : method === "totp" ? "Authenticator app"
-                            : "Backup code"}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                    <button 
+                    type="submit" 
+                    disabled={isLoading} 
+                    className="h-12 w-full cursor-pointer rounded-xl bg-[#252724] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3b3e39] disabled:opacity-50">
+                        {isLoading ? "Checking..." : "Log in"}
+                    </button>
+                </form>
+            ) : (
+                <form className="mt-8 space-y-5" onSubmit={handleVerify}>
+                    <label className="grid gap-2 text-sm font-semibold text-[#30332f]">Verification code
+                        <input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" minLength={6} maxLength={6} required className="h-12 rounded-xl border border-black/13 bg-white px-4 text-center font-mono text-lg tracking-[0.35em] outline-none focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]" placeholder="000000" />
+                    </label>
+                    <button type="submit" disabled={isLoading || code.length !== 6} className="h-12 w-full cursor-pointer rounded-xl bg-[#252724] text-sm font-semibold text-white disabled:opacity-50">{isLoading ? "Verifying..." : "Verify and continue"}</button>
+                    <button type="button" onClick={() => void resendCode()} disabled={isLoading || resendCooldown > 0} className="w-full cursor-pointer text-center text-sm font-semibold text-[#497446] disabled:opacity-50">
+                        {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Resend code"}
+                    </button>
+                </form>
             )}
-            <label className="grid gap-2 text-sm font-semibold text-[#30332f]">
-              {mfaMethod === "totp" ? "Authenticator code"
-                : mfaMethod === "backup_code" ? "Backup code"
-                  : "Verification code"}
-              <input
-                name="verificationCode"
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                required
-                value={mfaCode}
-                onChange={(event) => setMfaCode(event.target.value)}
-                className="h-12 rounded-xl border border-black/13 bg-white px-4 font-normal outline-none transition placeholder:text-[#a2a59f] focus:border-[#5d8b59] focus:ring-3 focus:ring-[#dcebd9]"
-                placeholder="Enter your code"
-              />
-            </label>
-            {(mfaMethod === "email_code" || mfaMethod === "phone_code") && (
-              <button
-                type="button"
-                onClick={() => void handleMfaMethodChange(mfaMethod)}
-                disabled={isLoading}
-                className="cursor-pointer text-left text-xs font-semibold text-[#477445] hover:underline!"
-              >
-                Resend code
-              </button>
-            )}
-          </>
-        )}
-
-        {!mfaRequired && <label className="flex items-center gap-3 text-xs font-medium text-[#686c65]">
-          <input
-            name="remember"
-            type="checkbox"
-            className="h-4 w-4 rounded border-black/20 accent-[#426f40]"
-          />
-          Keep me logged in
-        </label>}
-
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="h-12 w-full cursor-pointer rounded-xl bg-[#252724] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3b3e39] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#4c7849]"
-        >
-         {isLoading ? "Checking..." : mfaRequired ? "Verify and log in" : " Log in"}
-        </button>
-
-        
-          {status && (
-            <p
-              className={`rounded-xl px-4 py-3 text-center text-xs font-medium ${isError
-                  ? "bg-[#fff0ee] text-[#9a4d45]"
-                  : "bg-[#edf5eb] text-[#4e704b]"
-                }`}
-              role={isError ? "alert" : "status"}
-            >
-              {status}
+            {status && <p className={`mt-4 rounded-xl px-4 py-3 text-center text-xs font-medium ${isError ? "bg-[#fff0ee] text-[#9a4d45]" : "bg-[#edf5eb] text-[#4e704b]"}`} role={isError ? "alert" : "status"}>{status}</p>}
+            <p className="mt-7 text-center text-sm text-[#555952]">
+                New to OneMarketplace? <Link href="/signup" className="font-semibold text-[#397236] hover:underline!">Create an account</Link>
             </p>
-          )}
-      </form>
-
-      <p className="mt-7 text-center text-sm text-[#555952]">
-        New to OneMarketplace?{" "}
-        <Link
-          href="/signup"
-          className="font-semibold text-[#397236] hover:underline!"
-        >
-          Create an account
-        </Link>
-      </p>
-    </div>
-  );
+        </div>
+    );
 }

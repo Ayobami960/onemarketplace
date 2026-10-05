@@ -16,6 +16,11 @@ const errorMessages: Record<string, string> = {
     "We could not reach our servers. Please try again shortly.",
   dashboard_unavailable:
     "The dashboard is not configured yet. Please try again shortly.",
+  email_not_verified:
+    "Verify your email address before logging in. Request a new code and try again.",
+  otp_expired:
+    "That verification code has expired. Request a new code and try again.",
+  invalid_credentials: "The email address or password is incorrect.",
 };
 
 interface ErrorPageProps {
@@ -23,7 +28,7 @@ interface ErrorPageProps {
 }
 
 const Error = async ({ searchParams }: ErrorPageProps) => {
-  const { reason, role } = await searchParams;
+  const { reason } = await searchParams;
   const message = errorMessages[reason ?? ""] ?? "Something went wrong during signup.";
 
   return (

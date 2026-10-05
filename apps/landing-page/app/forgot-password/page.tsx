@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BrandMark } from "../_components/landing-page/brand-mark";
-import { ForgotPasswordForm } from "./forgot-password-form";
+import { ForgotPasswordForm } from "./first-party-forgot-password-form";
 
 export default function ForgotPasswordPage() {
   return (

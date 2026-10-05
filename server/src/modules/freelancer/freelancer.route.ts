@@ -1,8 +1,9 @@
-import {Router} from "express";
-import { isAuthenticated } from "../../middleware/auth.middleware.js";
+import { Router } from "express";
+import { authenticate, requireRole } from "../../middleware/auth.middleware.js";
 import { getLoggedInFreelancerProfileHandler, upsertFreelanceProfile } from "./freelancer.controller.js";
 
 export const freelancerRouter = Router();
-freelancerRouter.get("/profile", isAuthenticated, getLoggedInFreelancerProfileHandler);
-freelancerRouter.put("/profile", isAuthenticated, upsertFreelanceProfile);
+freelancerRouter.use(authenticate, requireRole("freelancer"));
+freelancerRouter.get("/profile", getLoggedInFreelancerProfileHandler);
+freelancerRouter.put("/profile", upsertFreelanceProfile);
 

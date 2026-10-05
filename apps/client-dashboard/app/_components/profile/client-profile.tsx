@@ -2,17 +2,21 @@
 
 import { Icon } from "@iconify/react";
 import Link from "next/link";
-import { SubmitEvent, useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { completedClientContracts } from "../data/client-data";
-import { useAuth, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { countries } from "@/app/utils/countries";
 import { toast } from "sonner";
-import { UserResource } from "@clerk/nextjs/types";
+import { useClientAccount } from "@/app/provider";
+import { clientApiFetch } from "@/app/utils/client-api";
+import { countries } from "@/app/utils/countries";
 
 interface ClientProfilePayload {
+  firstName?: string;
+  lastName?: string;
+  country?: string;
+  avatarUrl?: string;
   professionalRole?: string;
   companyName?: string;
   companyWebsite?: string;
@@ -34,6 +38,10 @@ interface ClientProfileMetadataResponse extends SaveClientProfileResponse {
   data: ClientProfilePayload | null;
 }
 
+interface AvatarUploadResponse extends SaveClientProfileResponse {
+  data: { url: string; fileId: string };
+}
+
 const industryOptions = [
   "Healthcare technology",
   "Software & technology",
@@ -48,46 +56,27 @@ const industryOptions = [
 ] as const;
 
 const getClientProfileEndpoint = () => {
-  const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL?.replace(/\/$/, "");
-
-  if (!serverUrl) {
-    throw new Error("NEXT_PUBLIC_SERVER_URL is not configured.");
-  }
-
-  return `${serverUrl}/api/v1/client/profile?role=client`;
+  return "client/profile?role=client";
 };
 
 export function ClientProfile({ editing = false }: { editing?: boolean }) {
-  const { user } = useUser();
-  const { getToken } = useAuth();
+  const account = useClientAccount();
   const queryClient = useQueryClient();
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null)
   const [saved, setSaved] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState("");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
   const [avatarError, setAvatarError] = useState("");
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormComplete, setIsFormComplete] = useState(false);
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
 
-
-
   const { data: profileMetaData, isLoading: profileMetaDataLoading } = useQuery({
     queryKey: ["profile-metadata"],
-    enabled: Boolean(user),
     queryFn: async () => {
-      const token = await getToken();
-
-      const response = await fetch(getClientProfileEndpoint(),
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          cache: "no-store",
-        },
-      );
+      const response = await clientApiFetch(getClientProfileEndpoint());
 
       const result = await response.json() as ClientProfileMetadataResponse;
 
@@ -113,18 +102,11 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
 
   const saveClientProfileMutation = useMutation({
     mutationFn: async (payload: ClientProfilePayload) => {
-      const token = await getToken();
-
-      if (!token) {
-        throw new Error("Your session has expired. Please sign in again.")
-      }
-
-      const response = await fetch(
+      const response = await clientApiFetch(
         getClientProfileEndpoint(),
         {
           method: "PUT",
           headers: {
-            Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
@@ -173,52 +155,44 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
 
   useEffect(
     () => () => {
-      if (avatarUrl) URL.revokeObjectURL(avatarUrl)
+      if (avatarUrl.startsWith("blob:")) URL.revokeObjectURL(avatarUrl);
     },
-    [avatarUrl]
+    [avatarUrl],
   );
 
+  if (profileMetaDataLoading) {
+    return <ProfileSkeleton editing={editing} />
+  }
+
+
   const handleAvatarChange = (file?: File) => {
-    setSaved(false);
     setAvatarError("");
+    setSaved(false);
 
     if (!file) return;
 
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-
-    if (!allowedTypes.includes(file.type)) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
       setAvatarFile(null);
       setAvatarUrl("");
-      setAvatarError("Choose a JPG, PNG, or WebP image.")
+      setAvatarError("Choose a JPG, PNG, or WebP image.");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
       setAvatarFile(null);
       setAvatarUrl("");
-      setAvatarError("Profile photos must be 5 MB or smaller.")
+      setAvatarError("Profile photos must be 5 MB or smaller.");
       return;
     }
 
     setAvatarFile(file);
     setAvatarUrl(URL.createObjectURL(file));
-  }
+  };
 
-
-  if (!user || profileMetaDataLoading) {
-    return <ProfileSkeleton editing={editing} />
-  }
-
-
-  const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaved(false);
     setFormError("");
-
-    if (!user) {
-      setFormError("Your authenticated user could not be loaded.")
-      return;
-    }
 
     if (!validateForm()) {
       event.currentTarget.reportValidity();
@@ -229,34 +203,41 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
     const formData = new FormData(event.currentTarget);
     const firstName = String(formData.get("firstName") ?? "").trim();
     const lastName = String(formData.get("lastName") ?? "").trim();
-    const location = String(formData.get("location") ?? "").trim();
+    const country = String(formData.get("country") ?? "").trim();
     const selectedIndustry = String(formData.get("industry") ?? "").trim();
     const customIndustry = String(formData.get("customIndustry") ?? "").trim();
-    const profilePayload: ClientProfilePayload = {
-      professionalRole: String(formData.get("jobRole") ?? "").trim(),
-      companyName: String(formData.get("companyName") ?? "").trim(),
-      companyWebsite: String(formData.get("companyWebsite") ?? "").trim(),
-      companySize: String(formData.get("companySize") ?? "").trim(),
-      industry:
-        selectedIndustry === "Other" ? customIndustry : selectedIndustry,
-      companyDescription: String(formData.get("companyDescription") ?? "").trim(),
-    };
 
     setIsSubmitting(true);
 
     try {
+      let savedAvatarUrl = profileMetaData?.avatarUrl ?? "";
       if (avatarFile) {
-        await user.setProfileImage({ file: avatarFile });
+        const uploadData = new FormData();
+        uploadData.append("avatar", avatarFile);
+        const uploadResponse = await clientApiFetch("upload/avatar", {
+          method: "POST",
+          body: uploadData,
+        });
+        const uploadResult = (await uploadResponse.json()) as AvatarUploadResponse;
+        if (!uploadResponse.ok || !uploadResult.data?.url) {
+          throw new Error(uploadResult.message || "The profile photo could not be uploaded.");
+        }
+        savedAvatarUrl = uploadResult.data.url;
       }
-      await user.update({
+
+      const profilePayload: ClientProfilePayload = {
         firstName,
         lastName,
-      });
-      await user.updateMetadata({
-        unsafeMetadata: {
-          country: location,
-        },
-      });
+        country,
+        avatarUrl: savedAvatarUrl,
+        professionalRole: String(formData.get("jobRole") ?? "").trim(),
+        companyName: String(formData.get("companyName") ?? "").trim(),
+        companyWebsite: String(formData.get("companyWebsite") ?? "").trim(),
+        companySize: String(formData.get("companySize") ?? "").trim(),
+        industry: selectedIndustry === "Other" ? customIndustry : selectedIndustry,
+        companyDescription: String(formData.get("companyDescription") ?? "").trim(),
+      };
+
       await saveClientProfileMutation.mutateAsync(profilePayload);
 
       setSaved(true);
@@ -337,18 +318,23 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
               account.
             </p>
             <div className="mt-5 flex flex-col gap-4 rounded-xl bg-[#f4f6f2] p-4 sm:flex-row sm:items-center">
-              <Image
-                src={avatarUrl || user.imageUrl}
-                width={90}
-                height={90}
-                alt="Client avatar preview"
-                className="h-20 w-20 rounded-full object-cover"
-              />
+              {avatarUrl || profileMetaData?.avatarUrl ? (
+                <Image
+                  src={avatarUrl || profileMetaData?.avatarUrl || ""}
+                  width={80}
+                  height={80}
+                  unoptimized
+                  alt="Client avatar preview"
+                  className="h-20 w-20 rounded-full object-cover"
+                />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-[#496e67] text-xl font-semibold text-white">
+                  {(profileMetaData?.firstName?.[0] || account.email[0] || "?").toUpperCase()}
+                </span>
+              )}
               <div>
                 <h3 className="text-sm font-semibold">Profile photo</h3>
-                <p className="mt-1 text-xs text-[#7b8078]">
-                  Upload a square JPG, PNG, or WebP image.
-                </p>
+                <p className="mt-1 text-xs text-[#7b8078]">JPG, PNG, or WebP. Maximum 5 MB.</p>
                 <label className="mt-3 inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-black/10 bg-white px-3 text-xs font-semibold">
                   <Icon icon="solar:camera-linear" width="17" />
                   Change photo
@@ -356,38 +342,24 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     className="sr-only"
-                    onChange={(event) => {
-                      handleAvatarChange(event.target.files?.[0]);
-                    }}
+                    onChange={(changeEvent) => handleAvatarChange(changeEvent.target.files?.[0])}
                   />
                 </label>
-                <p className="inline-flex items-center gap-1.5 text-xs text-[#6f756d] pl-3">
-                  <Icon
-                    icon="solar:shield-check-linear"
-                    width={15}
-                    className="shrink-0 text-[#5b8658]"
-                  />
-                  Please use your photo to avoid unnecessary account restrictions
-                </p>
-
+                {avatarError && <p className="mt-2 text-xs font-medium text-[#a34f49]">{avatarError}</p>}
+                <p className="mt-2 text-xs text-[#6f756d]">Account email: {account.email}</p>
               </div>
-              {
-                avatarError && (
-                  <p className="mt-2 text-xs font-medium text-[#a]">
-                    {avatarError}
-                  </p>
-                )
-              }
             </div>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <Field
                 label="First name *"
                 name="firstName"
-                defaultValue={user.firstName || "NA"} />
+                defaultValue={profileMetaData?.firstName ?? ""}
+              />
               <Field
                 label="Last name *"
                 name="lastName"
-                defaultValue={user.lastName || "NA"} />
+                defaultValue={profileMetaData?.lastName ?? ""}
+              />
               <Field
                 label="Role *"
                 name="jobRole"
@@ -395,34 +367,18 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
                 placeholder="Managing Director"
               />
               <label className="text-xs font-semibold">
-                Location *
-
+                Country *
                 <select
-                  name="location"
+                  name="country"
                   required
-                  defaultValue={(() => {
-                    const saveCountry = user?.unsafeMetadata?.country;
-
-                    if (typeof saveCountry !== "string") return "";
-
-                    return (countries.find(
-                      (country) =>
-                        country.code === saveCountry ||
-                        country.name === saveCountry,
-                    )?.code ?? "")
-                  })()}
+                  defaultValue={profileMetaData?.country ?? ""}
                   className="mt-2 h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm font-normal outline-none focus:border-[#6e916a]"
                 >
-                  <option value="" disabled>
-                    Select your country
-                  </option>
+                  <option value="" disabled>Select your country</option>
                   {countries.map((country) => (
-                    <option value={country.code} key={country.code}>
-                      {country.name}
-                    </option>
+                    <option value={country.code} key={country.code}>{country.name}</option>
                   ))}
                 </select>
-
               </label>
             </div>
           </section>
@@ -460,7 +416,7 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
                 ]}
               />
               <label className="text-xs font-semibold">
-                Industry
+                Industry *
                 <select
                   name="industry"
                   required
@@ -522,7 +478,7 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
             <button
               type="submit"
               disabled={!isFormComplete || isSubmitting || saveClientProfileMutation.isPending}
-              className="h-11 rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white disabled:opacity-400"
+              className="h-11 rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white disabled:opacity-50"
             >
               {isSubmitting ? "Saving..." : "Save profile"}
             </button>
@@ -531,7 +487,7 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
       ) : (
         <ProfilePreview
           profileMetadata={profileMetaData}
-          user={user}
+          account={account}
 
         />
       )}
@@ -541,10 +497,10 @@ export function ClientProfile({ editing = false }: { editing?: boolean }) {
 
 function ProfilePreview({
   profileMetadata,
-  user,
+  account,
 }: {
   profileMetadata: ClientProfilePayload | null | undefined;
-  user: UserResource;
+  account: ReturnType<typeof useClientAccount>;
 }) {
   const contractsPerPage = 2;
   const [contractPage, setContractPage] = useState(1);
@@ -569,15 +525,22 @@ function ProfilePreview({
     <div className="mt-8 grid items-start gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="grid gap-4 lg:sticky lg:top-24">
         <section className="rounded-2xl border border-black/8 bg-white p-6 text-center">
-          <Image
-            src={user?.imageUrl || ""}
-            width={90}
-            height={90}
-            alt="profile"
-            className="mx-auto h-28 w-28 rounded-full object-cover"
-          />
+          {profileMetadata?.avatarUrl ? (
+            <Image
+              src={profileMetadata.avatarUrl}
+              width={112}
+              height={112}
+              unoptimized
+              alt="Client profile photo"
+              className="mx-auto h-28 w-28 rounded-full object-cover"
+            />
+          ) : (
+            <span className="mx-auto flex h-28 w-28 items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">
+              {(profileMetadata?.firstName?.[0] || account.email[0] || "?").toUpperCase()}
+            </span>
+          )}
           <h2 className="mt-5 inline-flex items-center justify-center gap-1.5 text-xl font-semibold">
-            {user?.fullName}
+            {[profileMetadata?.firstName, profileMetadata?.lastName].filter(Boolean).join(" ") || account.email}
             {profileMetadata?.identityVerified && (
               <Icon
                 icon="solar:verified-check-bold"
@@ -590,19 +553,9 @@ function ProfilePreview({
             {profileMetadata?.professionalRole || "Role not set"} ·{" "}
             {profileMetadata?.companyName || "Company not set"}
           </p>
-          <div className="mt-3 flex justify-center text-xs text-[#858a82]">
-            <span className="inline-flex max-w-56 items-start gap-1.5 text-center">
-              <Icon
-                icon="solar:map-point-linear"
-                width="16"
-                className="mt-px shrink-0"
-              />
-              <span>
-                {countries.find(
-                  (country) => country.code === user?.unsafeMetadata.country,)?.name ?? ""}
-              </span>
-            </span>
-          </div>
+          <p className="mt-1 text-sm text-[#747a72]">
+            {countries.find((country) => country.code === profileMetadata?.country)?.name || "Country not set"}
+          </p>
           <div className="mt-5 border-t border-black/7 pt-5">
             {profileMetadata?.paymentMethodVerified ? (
               <span className="inline-flex items-center gap-2 rounded-full bg-[#e8f3e5] px-3 py-2 text-xs font-semibold text-[#4d784a]">
@@ -617,7 +570,7 @@ function ProfilePreview({
                 </p>
                 <Link
                 href="/settings?section=finances"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#d8aaa6 px-3 text-xs font-semibold text-[#914a45] transition hover:bg-[#fcecea]"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#d8aaa6] px-3 text-xs font-semibold text-[#914a45] transition hover:bg-[#fcecea]"
                 >
                 Add payment method
                  <Icon icon="solar:arrow-right-linear" width="17" />
@@ -962,6 +915,7 @@ function SelectField({
       {label}
       <select
         name={name}
+        required
         defaultValue={defaultValue}
         className="mt-2 h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm font-normal outline-none focus:border-[#6e916a]"
       >

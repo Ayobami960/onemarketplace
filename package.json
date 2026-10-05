@@ -1,0 +1,50 @@
+
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "OneMarketPlace",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "db:generate": "npx drizzle-kit generate",
+    "db:migrate": "npx drizzle-kit migrate",
+    "db:push": "npx drizzle-kit push",
+    "typecheck": "tsc --noEmit",
+    "engines": {
+      "node": "22.x"
+    }
+  },
+  "author": "Danxtech",
+  "license": "ISC",
+  "dependencies": {
+    "@imagekit/nodejs": "^7.12.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "argon2": "^0.45.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jose": "^6.2.12",
+    "nodemailer": "^10.0.14",
+    "redis": "^6.2.1",
+    "ws": "^8.21.3",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/supertest": "^7.2.1",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "supertest": "^7.3.1",
+    "vitest": "^5.0.3"
+  }
+}

@@ -4,14 +4,15 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BrandMark } from "../brand-mark";
 import { clientConversations } from "../data/client-data";
 import { MarketplaceSearchModal } from "../discovery/marketplace-search-modal";
 import { clientHeaderNavigation } from "./navigation";
-import { useClerk } from "@clerk/nextjs";
 import { SigningOutScreen } from "./signing-out-screen";
+import { useClientAccount } from "@/app/provider";
+import { clientApiFetch } from "@/app/utils/client-api";
 
 
 const notifications = [
@@ -109,7 +110,8 @@ function Notifications() {
 }
 
 function AccountMenu() {
-  const {signOut} = useClerk();
+  const account = useClientAccount();
+  const initials = account.email.slice(0, 2).toUpperCase();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -117,6 +119,17 @@ function AccountMenu() {
   const signOutInProgress = useRef(false);
   const redirectStarted = useRef(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const { data: profileMetaData } = useQuery({
+      queryKey: ["profile-metadata"],
+      queryFn: async () => {
+        const response = await clientApiFetch("client/profile?role=client");
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "The client profile could not be loaded.");
+        return result.data;
+      },
+    });
+
   useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => {
@@ -150,17 +163,11 @@ function AccountMenu() {
     setSignOutFailed(false);
     setIsSigningOut(true);
 
-    const timeoutId = window.setTimeout(() => {
-      toast.error("Sign out is taking longer than expected. Redirecting to login.");
-      finishSignOut();
-    }, 8000);
-
     try {
-      await signOut();
-      window.clearTimeout(timeoutId);
+      const response = await clientApiFetch("auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Could not sign you out.");
       finishSignOut();
     } catch {
-      window.clearTimeout(timeoutId);
       if (redirectStarted.current) return;
 
       signOutInProgress.current = false;
@@ -174,19 +181,20 @@ function AccountMenu() {
     <>
     <div ref={ref} className="relative">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex cursor-pointer items-center gap-2 rounded-full border border-black/8 p-1 pr-2.5 hover:bg-black/3">
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">OB</span>
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">{initials}</span>
         <Icon icon="solar:alt-arrow-down-linear" width="16" className={open ? "rotate-180" : ""} />
       </button>
       {open && (
         <div className="absolute top-12 right-0 w-80 overflow-hidden rounded-2xl border border-black/8 bg-white shadow-[0_24px_70px_rgba(26,34,26,.18)]">
           <div className="flex items-center gap-3 border-b border-black/7 p-4">
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">OB</span>
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">{initials}</span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <p className="truncate text-sm font-semibold">Olivia Bennett</p>
+                {/* <p className="truncate text-sm font-semibold">{account.email}</p> */}
+                <h2 className="text-sm font-semibold ">{profileMetaData?.firstName} {""} {profileMetaData?.lastName}</h2>
                 <span className="rounded-full bg-[#edf4ea] px-2 py-0.5 text-[8px] font-semibold text-[#52784f]">Client</span>
               </div>
-              <p className="mt-1 truncate text-[10px] text-[#7b8078]">Wellmade Health</p>
+              <p className="mt-1 truncate text-[10px] text-[#7b8078]">Client account</p>
             </div>
           </div>
           <div className="p-2">
@@ -198,7 +206,6 @@ function AccountMenu() {
           <div className="border-t border-black/7 p-2">
             <button
               type="button"
-              data-clerk-account-trigger
               onClick={() => {
                 setOpen(false);
                 window.location.assign("/settings?section=account");

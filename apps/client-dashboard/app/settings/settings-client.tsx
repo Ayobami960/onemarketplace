@@ -148,7 +148,7 @@ function AccountSettings({ onNotice }: { onNotice: (message: string) => void }) 
   const [deleteOpen, setDeleteOpen] = useState(false);
   return <>
     <div className="grid gap-4">
-      <SectionCard title="Manage account" description="Update your email address, password, connected accounts, and sign-in security through your account provider.">
+      <SectionCard title="Manage account" description="Your email address and sign-in security are managed through OneMarketplace authentication.">
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-[#f3f5f1] p-4">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#527a73] text-xs font-semibold text-white">OB</span>
@@ -159,8 +159,7 @@ function AccountSettings({ onNotice }: { onNotice: (message: string) => void }) 
           </div>
           <button
             type="button"
-            data-clerk-account-trigger
-            onClick={() => onNotice("Account manager will open through Clerk.")}
+            onClick={() => onNotice("Account security settings are coming soon.")}
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#252724] px-4 text-xs font-semibold text-white"
           >
             <Icon icon="solar:user-id-linear" width="17" />

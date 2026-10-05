@@ -12,9 +12,9 @@ import {
 import { useState } from "react";
 import { DatePickerField } from "./date-picker-field";
 import { useMutation } from "@tanstack/react-query";
-import { useAuth } from "@clerk/nextjs";
 import { toast } from "sonner";
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { clientApiFetch } from "@/app/utils/client-api";
 
 
 type JobStatus = "DRAFT" | "PUBLISHED";
@@ -94,7 +94,6 @@ export type InitialJobPost = {
 
 export function JobPostForm({ initialJob }: { initialJob?: InitialJobPost }) {
   const editing = Boolean(initialJob);
-  const { getToken } = useAuth();
   const [savedStatus, setSavedStatus] = useState<JobStatus | null>(null);
   const router = useRouter()
 
@@ -209,18 +208,12 @@ export function JobPostForm({ initialJob }: { initialJob?: InitialJobPost }) {
         values: JobPostValues;
         status: JobStatus;
       }) => {
-        const token = await getToken();
-        if (!token) {
-          throw new Error("Your session has expired. Please sign in again.");
-        }
-  
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SERVER_URL}/api/v1/jobs${editing ? `/${initialJob!.id}` : ""}?role=client`,
+        const response = await clientApiFetch(
+          `jobs${editing ? `/${initialJob!.id}` : ""}?role=client`,
           {
             method: editing ? "PUT" : "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               title: values.title,
@@ -271,12 +264,10 @@ export function JobPostForm({ initialJob }: { initialJob?: InitialJobPost }) {
 
     const deleteJob = useMutation({
       mutationFn: async () => {
-        const token = await getToken();
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_SERVER_URL}/api/v1/jobs/${initialJob?.id}?role=client`,
+        const response = await clientApiFetch(
+          `jobs/${initialJob?.id}?role=client`,
            {
               method: "DELETE",
-              headers: {Authorization: `Bearer ${token}`},
             },
         );
         const result = await response.json();   

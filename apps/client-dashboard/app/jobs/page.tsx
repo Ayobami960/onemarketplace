@@ -2,7 +2,6 @@ import { Icon } from "@iconify/react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ClientShell } from "../_components/dashboard/client-shell";
-import { clientJobs } from "../_components/data/client-data";
 import JobPostsList from "../_components/jobs/Job-posts-list";
 
 export const metadata: Metadata = {

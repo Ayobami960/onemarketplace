@@ -1,13 +1,5 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        hostname: "img.clerk.com*"
-      }
-    ]
-  }
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

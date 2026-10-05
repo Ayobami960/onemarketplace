@@ -10,6 +10,20 @@ import type { ApiResponse } from "../../types/common.types.js";
 import { requireText, requireWebsite } from "../../config/constants.js";
 
 
+interface ClientProfileBody {
+    firstName?: string;
+    lastName?: string;
+    country?: string;
+    avatarUrl?: string;
+    professionalRole?: string;
+    companyName?: string;
+    companyWebsite?: string | undefined;
+    companySize?: string;
+    industry?: string;
+    companyDescription?: string;
+}
+
+
 export const getLoggedInClientProfile: RequestHandler = asyncHandler(
     async (request, response) => {
         if (!request.auth){
@@ -32,17 +46,6 @@ export const getLoggedInClientProfile: RequestHandler = asyncHandler(
     },
 );
 
-
-interface ClientProfileBody {
-    professionalRole?: string;
-    companyName?: string;
-    companyWebsite?: string | undefined;
-    companySize?: string;
-    industry?: string;
-    companyDescription?: string;
-}
-
-
 export const upsertClientProfile: RequestHandler = asyncHandler (
     async (request, response) => {
         if (!request.auth){
@@ -54,8 +57,22 @@ export const upsertClientProfile: RequestHandler = asyncHandler (
         }
 
         const body = request.body as ClientProfileBody;
+        const avatarUrl = body.avatarUrl?.trim() ?? "";
+        if (avatarUrl) {
+            try {
+                const url = new URL(avatarUrl);
+                if (url.protocol !== "https:") throw new Error("Unsupported protocol.");
+            } catch {
+                throw new ApiError(400, "Profile photo URL must be a valid HTTPS URL.");
+            }
+        }
+
         const input: SaveClientProfileInput = {
             userId: request.auth.userId,
+            firstName: requireText(body.firstName, "First name"),
+            lastName: requireText(body.lastName, "Last name"),
+            country: requireText(body.country, "Country"),
+            avatarUrl,
             professionalRole: requireText(body.professionalRole, "Professional role"),
             companyName: requireText(body.companyName, "Company name"),
             companyWebsite: requireWebsite(body.companyWebsite),

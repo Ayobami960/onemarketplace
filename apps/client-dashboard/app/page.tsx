@@ -3,19 +3,46 @@ import Link from "next/link";
 import { Icon } from "@iconify/react";
 import { ClientShell } from "./_components/dashboard/client-shell";
 import { clientContracts, clientJobs, clientProposals } from "./_components/data/client-data";
-import { useUser } from "@clerk/nextjs";
+import { useClientAccount } from "./provider";
+import { useQuery } from "@tanstack/react-query";
+import { clientApiFetch } from "./utils/client-api";
 
 
 export default function ClientDashboardPage() {
-  const {user, isLoaded} = useUser();
+  const account = useClientAccount();
+  const greeting = getGreeting();
+
+
+ 
+  const { data: profileMetaData } = useQuery({
+        queryKey: ["profile-metadata"],
+        queryFn: async () => {
+          const response = await clientApiFetch("client/profile?role=client");
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.message || "The client profile could not be loaded.");
+          return result.data;
+        },
+      });
   const openJobs = clientJobs.filter((job) => job.status === "Open");
   const activeContracts = clientContracts.filter((contract) => contract.status !== "Completed");
+
+
+  function getGreeting(date: Date = new Date()): string {
+  const hour = date.getHours();
+
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "Good night"; 
+}
+
+
   return (
     <ClientShell>
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-semibold tracking-[.14em] text-[#62805f] uppercase">Client workspace</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-.045em] sm:text-4xl">Good morning, {!isLoaded ? "..." : user?.firstName}.</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-[-.045em] sm:text-4xl">Good {greeting}, {profileMetaData?.lastName}.</h1>
           <p className="mt-2 text-sm text-[#72776f]">Keep hiring and delivery moving without the busywork.</p>
         </div>
         <Link href="/jobs/new" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white"><Icon icon="solar:add-circle-linear" width="18" /> Post a job</Link>

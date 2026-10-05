@@ -3,10 +3,11 @@
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useClerk } from "@clerk/nextjs";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { SigningOutScreen } from "./signing-out-screen";
+import { clientApiFetch } from "../../utils/api";
+import { useClientAccount } from "../../provider";
 
 
 const accountItems = [
@@ -33,7 +34,7 @@ const accountItems = [
 export function AccountDropdown() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { signOut, setActive } = useClerk();
+  const account = useClientAccount();
   const queryClient = useQueryClient();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
@@ -53,27 +54,14 @@ export function AccountDropdown() {
     queryClient.clear();
   };
 
-  const finishSignOut = async (forceLocalClear = false) => {
-    if (redirectStarted.current) return;
+  const finishSignOut = () => {
     redirectStarted.current = true;
-
-    if (forceLocalClear) {
-      try {
-        await Promise.race([
-          setActive({ session: null }).catch(() => undefined),
-          new Promise<void>((resolve) => window.setTimeout(resolve, 250)),
-        ]);
-      } catch {
-        // Continue to cache cleanup and login even if local Clerk cleanup fails.
-      }
-    }
-
     clearClientState();
-    const redirectToHomePage = new URL(
-      "/",
+    const redirectToLogin = new URL(
+      "/login",
       process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE || "http://localhost:3000",
     );
-    window.location.replace(redirectToHomePage.toString());
+    window.location.replace(redirectToLogin.toString());
   };
 
   const logOutHandler = async () => {
@@ -85,17 +73,14 @@ export function AccountDropdown() {
     setSignOutFailed(false);
     setIsSigningOut(true);
 
-    const timeoutId = window.setTimeout(() => {
-      toast.error("Sign out is taking longer than expected. Redirecting to login.");
-      void finishSignOut(true);
-    }, 8000);
-
     try {
-      await signOut();
-      window.clearTimeout(timeoutId);
-      await finishSignOut();
+      const response = await clientApiFetch("auth/logout", { method: "POST" });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(result?.message || "Could not sign you out.");
+      }
+      finishSignOut();
     } catch {
-      window.clearTimeout(timeoutId);
       if (redirectStarted.current) return;
 
       signOutInProgress.current = false;
@@ -104,6 +89,9 @@ export function AccountDropdown() {
       toast.error("Could not sign you out. Check your connection and try again.");
     }
   };
+
+  const fullName = [account.firstName, account.lastName].filter(Boolean).join(" ") || account.email;
+  const initials = [account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U";
 
 
   return (
@@ -122,7 +110,7 @@ export function AccountDropdown() {
         }`}
       >
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#496e67] text-xs font-semibold text-white">
-          SK
+          {initials}
         </span>
         <Icon
           icon="solar:alt-arrow-down-linear"
@@ -139,12 +127,12 @@ export function AccountDropdown() {
         >
           <div className="flex items-center gap-3 border-b border-black/7 p-4">
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#496e67] text-sm font-semibold text-white">
-              SK
+              {initials}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">Shahriar Sajeeb</p>
+              <p className="truncate text-sm font-semibold">{fullName}</p>
               <p className="mt-0.5 truncate text-[11px] text-[#7b8078]">
-                Full-stack developer
+                {account.email}
               </p>
             </div>
             <span className="rounded-full bg-[#e6f2e3] px-2 py-1 text-[9px] font-semibold text-[#477344]">

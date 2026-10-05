@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.9.4",
     "@iconify/react": "^6.0.2",
     "iconify": "^1.4.0",
     "next": "16.2.11",
