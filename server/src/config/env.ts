@@ -131,4 +131,7 @@ export const env = {
         ),
         maxBase64ImageBytes: parsePositiveInt(process.env.FREELANCER_MAX_BASE64_IMAGE_BYTES, 5_242_880),
     },
+    stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+    stripeWebhookKey: process.env.STRIPE_WEBHOOK_SECRET,
+    freelancerDashboard: process.env.PUBLIC_FREELANCER_DASHBOARD || process.env.FREELANCER_DASHBOARD,
 } as const;

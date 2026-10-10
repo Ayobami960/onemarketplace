@@ -1,13 +1,16 @@
+
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { CONNECTS_CACHE_TTL_SECONDS, getConnectsCacheKey, INITIAL_CONNECTS, PROPOSAL_CONNECTS } from "../../config/constants.js"
+import { CONNECTS_CACHE_TTL_SECONDS, CONNECTS_PLANS, getConnectsCacheKey, INITIAL_CONNECTS, PROPOSAL_CONNECTS, type ConnectsPlan } from "../../config/constants.js"
 import { db } from "../../database/clients.js"
 import { connects, connects_history, connects_purchase_history } from "../../database/schema.js"
 import { ApiError } from "../../utils/api-error.js";
 import { redis } from "../../config/redis.js";
+import { env } from "../../config/env.js";
+import { stripe } from "../../config/stripe.js";
 
-export type ConnectsTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+// cashBalance function
 
-export const refreshConnectsCache = async (freelancerId: string, balance: number): Promise<void> => {
+export const cacheBalance = async (freelancerId: string, balance: number): Promise<void> => {
     if (!redis.isReady) return;
     try {
         await redis.setEx(getConnectsCacheKey(freelancerId), CONNECTS_CACHE_TTL_SECONDS, String(balance));
@@ -15,50 +18,6 @@ export const refreshConnectsCache = async (freelancerId: string, balance: number
         console.warn("Connects cache could not be refreshed.", error);
     }
 };
-
-export const getConnectsBalance = async (freelancerId: string): Promise<number> => {
-    const [balance] = await db.select({ amount: connects.connects })
-        .from(connects)
-        .where(eq(connects.freelancer_id, freelancerId))
-        .limit(1);
-    return balance?.amount ?? 0;
-};
-
-export const getConnectsHistory = async (freelancerId: string) => {
-    const [balance] = await db.select({ id: connects.id })
-        .from(connects)
-        .where(eq(connects.freelancer_id, freelancerId))
-        .limit(1);
-    if (!balance) return [];
-
-    const [ledger, purchases] = await Promise.all([
-        db.select().from(connects_history)
-            .where(eq(connects_history.connects_id, balance.id))
-            .orderBy(desc(connects_history.created_at)),
-        db.select().from(connects_purchase_history)
-            .where(eq(connects_purchase_history.connects_id, balance.id))
-            .orderBy(desc(connects_purchase_history.created_at)),
-    ]);
-
-    return [
-        ...ledger.map((entry) => ({
-            id: entry.id,
-            type: entry.type,
-            description: entry.description,
-            amount: entry.amount,
-            createdAt: entry.created_at,
-        })),
-        ...purchases.map((purchase) => ({
-            id: purchase.id,
-            type: "Connects purchase",
-            description: `${purchase.purchased_connects} Connects purchase (${purchase.status.toLowerCase()})`,
-            amount: purchase.purchased_connects,
-            amountPaid: purchase.amount_paid,
-            createdAt: purchase.created_at,
-        })),
-    ].sort((left, right) => (right.createdAt?.getTime() ?? 0) - (left.createdAt?.getTime() ?? 0));
-};
-
 
 export const addConnects = async (freelancerId: string) => {
     const balance = await db.transaction(async(transaction) => {
@@ -85,22 +44,23 @@ export const addConnects = async (freelancerId: string) => {
         .where(eq(connects.freelancer_id, freelancerId))
         .limit(1))[0];
 
-    if (currentBalance) await refreshConnectsCache(freelancerId, currentBalance.connects);
+    if (currentBalance) await cacheBalance(freelancerId, currentBalance.connects);
     return currentBalance;
 };
 
-export const chargeConnectsInTransaction = async (
-    transaction: ConnectsTransaction,
+export const chargeConnects = async(
     freelancerId: string,
     description: string,
-): Promise<typeof connects.$inferSelect> => {
-    const [balance] = await transaction.update(connects).set({
-        connects: sql`${connects.connects} - ${PROPOSAL_CONNECTS}`,
-        updated_at: new Date(),
-    }).where(and(
-        eq(connects.freelancer_id, freelancerId),
-        gte(connects.connects, PROPOSAL_CONNECTS),
-    )).returning();
+) => {
+    const balance = await db.transaction(async(transaction) => {
+        const [balance] = await transaction.update(connects).set({
+            connects: sql`${connects.connects} - ${PROPOSAL_CONNECTS}`,
+            updated_at: new Date(),
+        }).where(
+            and(eq(connects.freelancer_id, freelancerId),
+            gte(connects.connects, PROPOSAL_CONNECTS),
+        ),
+    ).returning();
 
     if(!balance) throw new ApiError(400, "Not enough Connects.");
 
@@ -112,44 +72,122 @@ export const chargeConnectsInTransaction = async (
     });
 
     return balance;
-};
-
-export const chargeConnects = async (freelancerId: string, description: string) => {
-    const balance = await db.transaction((transaction) =>
-        chargeConnectsInTransaction(transaction, freelancerId, description),
-    );
-    await refreshConnectsCache(freelancerId, balance.connects);
-    return balance;
-};
-
-export const returnConnectsInTransaction = async (
-    transaction: ConnectsTransaction,
-    freelancerId: string,
-    description: string,
-    amount = PROPOSAL_CONNECTS,
-): Promise<typeof connects.$inferSelect> => {
-    const [balance] = await transaction.update(connects).set({
-        connects: sql`${connects.connects} + ${amount}`,
-        updated_at: new Date(),
-    }).where(eq(connects.freelancer_id, freelancerId)).returning();
-
-    if (!balance) throw new ApiError(409, "Connect balance could not be refunded.");
-
-    await transaction.insert(connects_history).values({
-        connects_id: balance.id,
-        type: "Proposal withdrawn refund",
-        description,
-        amount,
     });
 
+    await cacheBalance(freelancerId, balance.connects);
+
     return balance;
 };
 
-export const returnConnects = async (freelancerId: string, description: string) => {
-    const balance = await db.transaction((transaction) =>
-        returnConnectsInTransaction(transaction, freelancerId, description),
-    );
-    await refreshConnectsCache(freelancerId, balance.connects);
+
+export const returnConnects = async (
+    freelancerId: string,
+    description: string,
+) => {
+    const balance = await db.transaction(async(transaction) => {
+        const [balance] = await transaction.update(connects).set({
+            connects: sql`${connects.connects} - ${PROPOSAL_CONNECTS}`,
+            updated_at: new Date(),
+        }).where(eq(connects.freelancer_id, freelancerId),).returning();
+
+         if(!balance) throw new ApiError(400, "Connect balance not  found.");
+
+         await transaction.insert(connects_history).values({
+            connects_id: balance.id,
+            type: "Proposal withdrawn refound",
+             description,
+             amount: -PROPOSAL_CONNECTS,
+         });
+
+         return balance;
+    
+    });
+
+    await cacheBalance(freelancerId, balance.connects);
     return balance
 }
 
+
+
+export const getConnectsHistory = async (freelancerId: string) => 
+    await db
+        .select({
+            id: connects_history.id,
+            type: connects_history.type,
+            description: connects_history.description,
+            amount: connects_history.amount,
+            created_at: connects_history.created_at,
+        })
+        .from(connects_history)
+        .innerJoin(connects, eq(connects_history.connects_id, connects.id))
+        .where(eq(connects.freelancer_id, freelancerId))
+        .orderBy(desc(connects_history.created_at))
+        .limit(10);
+
+
+export const createConnectsCheckout = async (freelancerId: string, purchasedConnects: ConnectsPlan) => {
+    if (!env.stripeSecretKey || !env.freelancerDashboard){
+        throw new ApiError(503, "Connects payments are not configured.");
+    }
+
+    const session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [
+            {
+                quantity: 1,
+                price_data: {
+                    currency: "usd",
+                    unit_amount: CONNECTS_PLANS[purchasedConnects],
+                    product_data: {name: `${purchasedConnects} Connects`}
+                },
+            },
+        ],
+        metadata: {
+            freelancerId,
+            purchasedConnects: String(purchasedConnects),
+        },
+        success_url: `${env.freelancerDashboard}/settings?section=payment=success`,
+        cancel_url: new URL("/settings?section=connects", env.freelancerDashboard).toString(),
+    });
+
+    if(!session.url) throw new ApiError(502, "Stripe Checkout could not start");
+    return session.url;
+};
+
+export const completeConnectPurchase = async (
+    freelancerId: string, 
+    purchasedConnects: ConnectsPlan,
+    paymentId: string,
+) => {
+    const balance = await db.transaction(async(transaction) => {
+        const [purchase] = await transaction.insert(connects_purchase_history).values({
+            connects_id: sql`(select ${connects.id} from ${connects} where ${connects.freelancer_id} = ${freelancerId})`,
+            purchased_connects: purchasedConnects,
+            amount_paid: String(CONNECTS_PLANS[purchasedConnects] / 100),
+            payment_id: paymentId,
+            status: "COMPLETED",
+        }).onConflictDoNothing({ target: connects_purchase_history.payment_id }).returning();
+
+        if(!purchase) return;
+
+        const [updatedBalance] = await transaction.update(connects).set({
+            connects: sql`${connects.connects} + ${purchasedConnects}`,
+            updated_at: new Date(),
+        })
+        .where(eq(connects.freelancer_id, freelancerId)).returning();
+
+
+        if(!updatedBalance) throw new ApiError(404, "Connects balance not found.");
+
+        await transaction.insert(connects_history).values({
+            connects_id: updatedBalance.id,
+            type: "Connects purchased",
+            description: `Purchased ${purchasedConnects} Connects`,
+            amount: purchasedConnects,
+        });
+
+        return updatedBalance;
+    });
+
+    if (balance) await cacheBalance(freelancerId, balance.connects);
+};

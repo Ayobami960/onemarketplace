@@ -44,3 +44,13 @@ export const getConnectsCacheKey = (userId: string): string =>
 
 
 export const CONNECTS_CACHE_TTL_SECONDS =  10 * 60
+
+
+export const CONNECTS_PLANS = {
+    20: 300,
+    40: 600,
+    80: 1200,
+} as const;
+
+
+export type ConnectsPlan = keyof typeof CONNECTS_PLANS

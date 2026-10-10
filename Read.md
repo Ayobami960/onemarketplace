@@ -1,3 +1,9 @@
-https://www.linkedin.com/in/adetoye-kehinde-a2b914240/
+Escrow is a legal and financial arrangement where a neutral third party temporarily holds money, assets, 
+or documents on behalf of a buyer and a seller. The third party releases these items only when all specific conditions a seller. 
+The third party releases these items only when all specific conditions of the contract are met
 
-As the CEO of Danxtech, my mission is clear: to bridge the gap between complex technology and real-world impact. We don’t just build software, manage infrastructure, or design systems—we engineer the digital tools that empower businesses to scale efficiently. Leadership isn't about sitting at the top; it’s about holding the torch for our team and ensuring our clients always receive the absolute highest standard of innovation. At Danxtech, we are ready to take your digital presence to the next level. Let's build something exceptional together.
+
+
+payment webhook
+stripe login
+stripe listen --forward-connect-to localhost:8080/api/v1/connects/webhooks --all-snapshot

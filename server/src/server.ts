@@ -20,7 +20,19 @@ const isVercel = process.env.VERCEL === "1";
 const app = express();
 
 app.disable("x-powered-by");
-app.use(helmet());
+app.use(`${API_PREFIX}/connects/webhook`, express.raw({type: "application/json"}),);
+
+// app.use(
+//     withOneMinuteLogs(
+//         {
+//             apiKey,
+//             appName: "OneMarketPlace",
+//             environment: process.env.NODE_ENV ?? "development",
+//         },
+//         {autoLogRequests: false}
+//     )
+// )
+
 
 app.use(
     cors({
@@ -36,6 +48,9 @@ app.use(
         allowedHeaders: ["Content-Type", "Authorization"],
     })
 );
+
+app.use(helmet());
+
 
 app.use(
     express.json({ limit: "2mb" })

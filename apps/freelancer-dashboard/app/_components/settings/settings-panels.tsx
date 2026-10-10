@@ -2,7 +2,11 @@
 
 import { Icon } from "@iconify/react";
 import { useState } from "react";
-import { connectsHistory, earningsHistory } from "./settings-data";
+import {  earningsHistory } from "./settings-data";
+import { useQuery } from "@tanstack/react-query";
+import { clientApiFetch } from "@/app/utils/api";
+import { useClientAccount } from "@/app/provider";
+import { format } from "timeago.js";
 
 const Panel = ({ title, description, children }: { title: string; description: string; children: React.ReactNode }) => (
   <section className="overflow-hidden rounded-2xl border border-black/8 bg-white">
@@ -11,21 +15,147 @@ const Panel = ({ title, description, children }: { title: string; description: s
   </section>
 );
 
+const SkeletonBar = ({ className = "" }: { className?: string }) => (
+  <div className={`animate-pulse rounded-md bg-[#e7eae4] ${className}`} />
+);
+
+const ConnectsHistorySkeleton = () => (
+  <Panel
+    title="Connects"
+    description="Track how you use Connects and purchase more when you need them."
+  >
+    <div role="status" aria-busy="true" aria-label="Loading connects">
+      {/* Balance card */}
+      <div className="flex flex-col justify-between gap-4 border-b border-black/7 p-5 sm:flex-row sm:items-center sm:p-6">
+        <div>
+          <SkeletonBar className="h-3 w-24" />
+          <div className="mt-3 flex items-baseline gap-2">
+            <SkeletonBar className="h-9 w-16" />
+            <SkeletonBar className="h-3.5 w-16" />
+          </div>
+        </div>
+        <SkeletonBar className="h-11 w-full rounded-xl sm:w-36" />
+      </div>
+
+      {/* History rows */}
+      {/* {Array.from({ length: 1 }).map((_, index) => (
+        <div
+          key={index}
+          className={`flex items-center gap-4 px-5 py-4 sm:px-6 ${index ? "border-t border-black/6" : ""}`}
+        >
+          <SkeletonBar className="h-9 w-9 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1">
+            <SkeletonBar className="h-3.5 w-40 max-w-full" />
+            <SkeletonBar className="mt-2 h-3 w-56 max-w-full" />
+          </div>
+          <SkeletonBar className="h-4 w-8" />
+        </div>
+      ))} */}
+    </div>
+  </Panel>
+);
+
+type ConnectsHistoryItem = {
+  id: string;
+  label: string;
+  detail: string;
+  date: string;
+  amount: number;
+};
+
+
 export function ConnectsPanel({ onBuy }: { onBuy: () => void }) {
+  const account = useClientAccount();
+
+    const { data: connectMetadata, isLoading: connectsMetadataLoading} = useQuery({
+      queryKey: ["connects-history"],
+      enabled: Boolean(account),
+      retry: 1,
+      staleTime: 30_000,
+      queryFn: async () => {
+        const response = await clientApiFetch("connects?role=freelancer");
+  
+        if (!response.ok) {
+          throw new Error(`Failed to load connects (${response.status})`);
+        }
+  
+        const result = (await response.json()) as {
+          success: boolean;
+          message?: string;
+          data?: { connects: number };
+        };
+  
+        if (!result.success || !result.data) {
+          throw new Error(result.message || "Could not load connects.");
+        }
+  
+        return result.data;
+      },
+    });
+
+    
+ const { data: connectsHistory, isLoading: connectsHistoryLoading } = useQuery({
+  queryKey: ["connects", "history"],
+  enabled: Boolean(account),
+  retry: 1,
+  staleTime: 30_000,
+  queryFn: async () => {
+    const response = await clientApiFetch("connects/history?role=freelancer");
+
+    if (!response.ok) {
+      throw new Error(`Failed to load connects history (${response.status})`);
+    }
+
+    const result = (await response.json()) as {
+      success: boolean;
+      message?: string;
+      data?: ConnectsHistoryItem[];
+    };
+
+    if (!result.success || !result.data) {
+      throw new Error(result.message || "Could not load connects history.");
+    }
+
+    return result.data;
+  },
+});
+
+
+
   return (
     <Panel title="Connects" description="Track how you use Connects and purchase more when you need them.">
       <div className="flex flex-col justify-between gap-4 border-b border-black/7 p-5 sm:flex-row sm:items-center sm:p-6">
-        <div><p className="text-xs text-[#7b8078]">Available balance</p><p className="mt-1 text-3xl font-semibold">64 <span className="text-sm font-normal text-[#7b8078]">Connects</span></p></div>
+        <div><p className="text-xs text-[#7b8078]">Available balance</p><p className="mt-1 text-3xl font-semibold">{connectMetadata?.connects || "..."} {" "}<span className="text-sm font-normal text-[#7b8078]">Connects</span></p></div>
         <button type="button" onClick={onBuy} className="h-11 cursor-pointer rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white">Buy Connects</button>
       </div>
       <div>
-        {connectsHistory.map((item, index) => (
+
+        {connectsHistoryLoading || connectsMetadataLoading ? (
+          <ConnectsHistorySkeleton />
+        ) : (
+           <div>
+          {connectsHistory?.map((item: any, index: number) => (
           <div key={item.id} className={`flex items-center gap-4 px-5 py-4 sm:px-6 ${index ? "border-t border-black/6" : ""}`}>
-            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${item.amount > 0 ? "bg-[#e7f2e4] text-[#4d784a]" : "bg-[#f1f0e7] text-[#766f47]"}`}><Icon icon={item.amount > 0 ? "solar:add-circle-linear" : "solar:plain-2-linear"} width="18" /></span>
-            <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{item.label}</p><p className="mt-1 truncate text-xs text-[#858a82]">{item.detail} · {item.date}</p></div>
-            <strong className={`text-sm ${item.amount > 0 ? "text-[#4d784a]" : "text-[#343833]"}`}>{item.amount > 0 ? "+" : ""}{item.amount}</strong>
+            <span 
+            className={`flex h-9 w-9 shrink-0 items-center justify-center 
+            rounded-full ${item.amount > 0 ? "bg-[#e7f2e4] text-[#4d784a]"
+             : "bg-[#f1f0e7] text-[#766f47]"}`}><Icon icon={item.amount > 0 ? "solar:add-circle-linear" 
+             : "solar:plain-2-linear"} width="18" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">{item.type}</p>
+              <p className="mt-1 truncate text-xs text-[#858a82]">
+                {item.description} · {format(item.created_at)}
+                </p>
+            </div>
+            <strong 
+            className={`text-sm ${item.amount > 0 ? "text-[#4d784a]" : "text-[#343833]"}`}>
+              {item.amount > 0 ? "+" : ""}{item.amount}
+            </strong>
           </div>
         ))}
+        </div>
+        )}
+       
       </div>
     </Panel>
   );

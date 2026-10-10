@@ -1,8 +1,13 @@
 import { Router } from "express";
-import { authenticate, requireRole } from "../../middleware/auth.middleware.js";
-import { getConnectsBalanceHandler, getConnectsHistoryHandler } from "./connects.controller.js";
+import { authenticate, } from "../../middleware/auth.middleware.js";
+import { availableConnects } from "../../middleware/connects.middleware.js";
+import { buyConnects, connectsWebhook, getAvailableConnects, getLoggedInFreelancerConnectsHistory } from "./connects.controller.js";
 
 export const connectsRouter = Router();
-connectsRouter.use(authenticate, requireRole("freelancer"));
-connectsRouter.get("/balance", getConnectsBalanceHandler);
-connectsRouter.get("/history", getConnectsHistoryHandler);
+
+connectsRouter.post("/webhook", connectsWebhook);
+connectsRouter.use(authenticate, availableConnects);
+connectsRouter.get("/", getAvailableConnects);
+connectsRouter.get("/history", getLoggedInFreelancerConnectsHistory);
+connectsRouter.post("/checkout", buyConnects);
+

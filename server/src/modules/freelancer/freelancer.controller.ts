@@ -7,7 +7,7 @@ import { getFreelancerProfile, saveFreelancerProfile } from "./freelancer.servic
 import { requireText } from "../../config/constants.js";
 import { env } from "../../config/env.js";
 
-const requireFreelancer = (request: Parameters<RequestHandler>[0]) => {
+export const requireFreelancer = (request: Parameters<RequestHandler>[0]) => {
     if (!request.auth) throw new ApiError(401, "Authentication is required.");
     if (request.auth.role !== "freelancer") {
         throw new ApiError(403, "A freelancer account is required.");

@@ -15,8 +15,12 @@ import { dashboardJobs } from "./_components/jobs/jobs-data";
 import { ProposalModal } from "./_components/jobs/proposal-modal";
 import type { Job } from "./_components/jobs/types";
 import { redirect } from "next/navigation";
+import { useClientAccount } from "./provider";
+import { useQuery } from "@tanstack/react-query";
+import { clientApiFetch } from "./utils/api";
 
 export function FreelancerDashboard() {
+  const account = useClientAccount();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Best matches");
   const [saved, setSaved] = useState<number[]>([]);
@@ -29,6 +33,32 @@ export function FreelancerDashboard() {
     Number(Boolean(filters.minBudget || filters.maxBudget)) +
     Number(filters.proposalRange !== "Any number") +
     Number(filters.verifiedOnly);
+
+  const { data: connectMetadata, isLoading: connectsLoading } = useQuery({
+    queryKey: ["connects", "freelancer"],
+    enabled: Boolean(account),
+    retry: 1,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const response = await clientApiFetch("connects?role=freelancer");
+
+      if (!response.ok) {
+        throw new Error(`Failed to load connects (${response.status})`);
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        message?: string;
+        data?: { connects: number };
+      };
+
+      if (!result.success || !result.data) {
+        throw new Error(result.message || "Could not load connects.");
+      }
+
+      return result.data;
+    },
+  });
 
   const visibleJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -116,9 +146,8 @@ export function FreelancerDashboard() {
                     key={tab}
                     type="button"
                     onClick={() => setActiveTab(tab)}
-                    className={`relative shrink-0 cursor-pointer px-4 py-3 text-sm font-semibold ${
-                      activeTab === tab ? "text-[#4d764a]" : "text-[#777c74]"
-                    }`}
+                    className={`relative shrink-0 cursor-pointer px-4 py-3 text-sm font-semibold ${activeTab === tab ? "text-[#4d764a]" : "text-[#777c74]"
+                      }`}
                   >
                     {tab}
                     {activeTab === tab && (
@@ -194,9 +223,8 @@ export function FreelancerDashboard() {
                 ].map(([value, label], index) => (
                   <div
                     key={label}
-                    className={`rounded-xl px-2 py-3 ${
-                      index === 2 ? "bg-[#eaf3e7]" : "bg-[#f2f4f0]"
-                    }`}
+                    className={`rounded-xl px-2 py-3 ${index === 2 ? "bg-[#eaf3e7]" : "bg-[#f2f4f0]"
+                      }`}
                   >
                     <strong
                       className={
@@ -212,7 +240,7 @@ export function FreelancerDashboard() {
               <div className="mt-5 border-t border-black/7 pt-4">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[#777c74]">Available Connects</span>
-                  <strong>64</strong>
+                  <strong>{connectsLoading ? "…" : (connectMetadata?.connects ?? "—")}</strong>
                 </div>
                 <button
                   type="button"

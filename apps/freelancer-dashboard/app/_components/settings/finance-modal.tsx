@@ -1,6 +1,8 @@
 "use client";
 
+import { clientApiFetch } from "@/app/utils/api";
 import { Icon } from "@iconify/react";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 
 type FinanceModalProps = {
@@ -8,10 +10,51 @@ type FinanceModalProps = {
   onClose: () => void;
 };
 
+
+type CheckoutResponse = {
+  success?: boolean;
+  message?: string;
+  url?: string;
+  data?: { url?: string };
+};
+ 
+
 export function FinanceModal({ mode, onClose }: FinanceModalProps) {
   const [complete, setComplete] = useState(false);
   const [connects, setConnects] = useState(40);
   const buying = mode === "connects";
+
+   const checkout = useMutation({
+    mutationFn: async () => {
+      // Auth is cookie-based (credentials: "include" in clientApiFetch),
+      // so no Bearer token is needed.
+      const response = await clientApiFetch(
+        "connects/checkout?role=freelancer",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connects }),
+        },
+      );
+ 
+      const result = (await response.json().catch(() => null)) as CheckoutResponse | null;
+ 
+      if (!response.ok) {
+        throw new Error(result?.message || "Failed to create checkout session");
+      }
+ 
+      const url = result?.data?.url ?? result?.url;
+      if (!url) {
+        throw new Error("Checkout link was not returned. Please try again.");
+      }
+ 
+      return url;
+    },
+    onSuccess: (url) => {
+      window.location.assign(url);
+    },
+  });
+ 
 
   if (complete) {
     return (
@@ -28,10 +71,26 @@ export function FinanceModal({ mode, onClose }: FinanceModalProps) {
 
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="finance-modal-title" className="fixed inset-0 z-60 grid place-items-center bg-[#172018]/45 p-5 backdrop-blur-[2px]">
-      <form onSubmit={(event) => { event.preventDefault(); setComplete(true); }} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl sm:p-7">
+      <form 
+        onSubmit={(event) => { 
+          event.preventDefault(); 
+          buying ? checkout.mutate() : setComplete(true)
+        }} 
+        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl sm:p-7">
         <div className="flex items-start justify-between">
-          <div><p className="text-xs font-semibold tracking-wide text-[#62805f] uppercase">{buying ? "Proposal credits" : "Available balance"}</p><h2 id="finance-modal-title" className="mt-2 text-xl font-semibold">{buying ? "Buy Connects" : "Withdraw earnings"}</h2></div>
-          <button type="button" onClick={onClose} aria-label="Close" className="cursor-pointer"><Icon icon="solar:close-circle-linear" width="25" /></button>
+          <div>
+            <p className="text-xs font-semibold tracking-wide text-[#62805f] uppercase">
+              {buying ? "Proposal credits" : "Available balance"}</p>
+              <h2 id="finance-modal-title" className="mt-2 text-xl font-semibold">
+                {buying ? "Buy Connects" : "Withdraw earnings"}</h2>
+            </div>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            aria-label="Close" 
+            className="cursor-pointer">
+              <Icon icon="solar:close-circle-linear" width="25" />
+          </button>
         </div>
         {buying ? (
           <>
@@ -49,7 +108,25 @@ export function FinanceModal({ mode, onClose }: FinanceModalProps) {
             <div className="mt-4 flex justify-between text-xs text-[#737870]"><span>Processing fee</span><strong className="text-[#343833]">$1.00</strong></div>
           </>
         )}
-        <div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="h-11 cursor-pointer rounded-xl border border-black/10 px-5 text-sm font-semibold">Cancel</button><button type="submit" className="h-11 cursor-pointer rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white">{buying ? "Buy Connects" : "Withdraw"}</button></div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="h-11 cursor-pointer rounded-xl border border-black/10 px-5 text-sm font-semibold">
+              Cancel
+          </button>
+          <button 
+            type="submit" 
+            disabled={checkout.isPending}
+            className="h-11 cursor-pointer rounded-xl bg-[#252724] px-5 text-sm font-semibold text-white">
+              {checkout.isPending 
+                ? "Redirecting..." 
+                : buying 
+                  ? "Buy Connects" 
+                  : "Withdraw"
+              }
+          </button>
+        </div>
       </form>
     </div>
   );

@@ -1,3 +1,5 @@
+import { Logger } from 'pino'; 
+
 declare global {
     namespace Express {
         interface Request {
@@ -10,6 +12,7 @@ declare global {
                 emailVerified: boolean;
             };
             availableConnects?: number;
+             logger: Logger;
         }
     }
 }

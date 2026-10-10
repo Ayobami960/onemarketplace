@@ -3,7 +3,7 @@
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useForm, useWatch } from "react-hook-form";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
@@ -986,7 +986,7 @@ export function ProfileEditor({
     setEditingPortfolioId(undefined);
   };
 
-  const submitPortfolioForm = async (event: FormEvent<HTMLFormElement>) => {
+  const submitPortfolioForm = async (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     const form = event.currentTarget; // capture synchronously, before any await
