@@ -1,3 +1,4 @@
+/// <reference path="./types/express.d.ts" />
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -22,16 +23,6 @@ const app = express();
 app.disable("x-powered-by");
 app.use(`${API_PREFIX}/connects/webhook`, express.raw({type: "application/json"}),);
 
-// app.use(
-//     withOneMinuteLogs(
-//         {
-//             apiKey,
-//             appName: "OneMarketPlace",
-//             environment: process.env.NODE_ENV ?? "development",
-//         },
-//         {autoLogRequests: false}
-//     )
-// )
 
 
 app.use(
