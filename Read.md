@@ -5,5 +5,7 @@ The third party releases these items only when all specific conditions of the co
 
 
 payment webhook
-stripe login
+
+
 stripe listen --forward-connect-to localhost:8080/api/v1/connects/webhooks --all-snapshot
+
