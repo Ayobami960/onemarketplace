@@ -9,13 +9,23 @@ import {
     login as authenticateAccount, refresh as rotateRefreshToken, register as createAccount,
     resendOtp as sendVerificationCode, resetPassword as updatePassword,
     revokeSession, revokeByRefreshToken, updateAccountProfile, verifyEmail as verifyAccountEmail,
+    createHandoffCode, exchangeHandoffCode,
     type AuthRequestContext, type IssuedTokens,
 } from "./auth.service.js";
 
-const cookieOptions = (maxAge: number): CookieOptions => ({
+/**
+ * The browser never calls the API directly: each frontend proxies `/api/v1/*`
+ * through its own origin, so these cookies are always first-party to the app
+ * that holds them. That keeps them working on separate Vercel domains without a
+ * shared `COOKIE_DOMAIN`, and lets us keep the safer `Lax` policy. `Secure` is
+ * still required on HTTPS.
+ */
+const sameSiteForEnvironment = (): CookieOptions["sameSite"] => "lax";
+
+export const sessionCookieOptions = (maxAge: number): CookieOptions => ({
     httpOnly: true,
     secure: env.nodeEnv === "production",
-    sameSite: "strict",
+    sameSite: sameSiteForEnvironment(),
     path: "/",
     maxAge: maxAge * 1000,
     ...(env.cookieDomain ? { domain: env.cookieDomain } : {}),
@@ -32,14 +42,14 @@ const requestContext = (request: Parameters<RequestHandler>[0]): AuthRequestCont
 const setTokenCookies = (response: Parameters<RequestHandler>[1], tokens: IssuedTokens): void => {
     const names = getCookieNames();
     const ttl = getTokenTtls();
-    response.cookie(names.access, tokens.accessToken, cookieOptions(ttl.access));
-    response.cookie(names.refresh, tokens.refreshToken, cookieOptions(ttl.refresh));
+    response.cookie(names.access, tokens.accessToken, sessionCookieOptions(ttl.access));
+    response.cookie(names.refresh, tokens.refreshToken, sessionCookieOptions(ttl.refresh));
 };
 
 const clearTokenCookies = (response: Parameters<RequestHandler>[1]): void => {
     const names = getCookieNames();
-    response.clearCookie(names.access, cookieOptions(0));
-    response.clearCookie(names.refresh, cookieOptions(0));
+    response.clearCookie(names.access, sessionCookieOptions(0));
+    response.clearCookie(names.refresh, sessionCookieOptions(0));
 };
 
 const readCookie = (header: string | undefined, name: string): string | undefined => {
@@ -104,6 +114,18 @@ export const resetPassword: RequestHandler = asyncHandler(async (request, respon
     await updatePassword(request.body);
     clearTokenCookies(response);
     response.status(200).json({ success: true, message: "Password reset. Please sign in again." } satisfies ApiResponse<never>);
+});
+
+export const handoff: RequestHandler = asyncHandler(async (request, response) => {
+    if (!request.auth?.sessionId) throw new ApiError(401, "Authentication is required.");
+    const result = await createHandoffCode(request.auth.userId, request.auth.sessionId);
+    response.status(200).json({ success: true, message: "Sign-in hand-off created.", data: result } satisfies ApiResponse<typeof result>);
+});
+
+export const exchangeHandoff: RequestHandler = asyncHandler(async (request, response) => {
+    const result = await exchangeHandoffCode(request.body.code, requestContext(request));
+    setTokenCookies(response, result.tokens);
+    response.status(200).json({ success: true, message: "Signed in.", data: result.account } satisfies ApiResponse<typeof result.account>);
 });
 
 export const me: RequestHandler = asyncHandler(async (request, response) => {

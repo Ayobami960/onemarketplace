@@ -68,7 +68,7 @@ const resolveDashboardUrl = (role: Role, request: NextRequest): string => {
   if (configuredDashboard) {
     try {
       // Use the configured dashboard URL exactly as provided
-      return new URL(configuredDashboard).toString();
+      return new URL(configuredDashboard).toString().replace(/\/+$/, "");
     } catch {
       // Invalid URL: fall through to the fallback below
     }
@@ -78,7 +78,35 @@ const resolveDashboardUrl = (role: Role, request: NextRequest): string => {
   return new URL(
     role === "client" ? "/client" : "/freelancer",
     request.nextUrl.origin
-  ).toString();
+  ).toString().replace(/\/+$/, "");
+};
+
+/**
+ * Exchanges the already-authenticated landing session for a one-time code. The
+ * dashboard redeems that code for its own first-party session cookies, so the
+ * two apps never need to share a cookie domain.
+ */
+const requestHandoff = async (
+  serverUrl: string,
+  cookieHeader: string
+): Promise<string | undefined> => {
+  try {
+    const response = await fetch(`${serverUrl}/api/v1/auth/handoff`, {
+      method: "POST",
+      headers: { cookie: cookieHeader },
+      cache: "no-store",
+    });
+    if (!response.ok) return undefined;
+    const payload = (await response.json()) as {
+      success?: boolean;
+      data?: { code?: string };
+    };
+    return payload?.success && typeof payload.data?.code === "string"
+      ? payload.data.code
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 export default async function proxy(request: NextRequest) {
@@ -142,8 +170,15 @@ export default async function proxy(request: NextRequest) {
       return NextResponse.next();
     }
 
+    // Without a hand-off code the dashboard would bounce the visitor straight
+    // back here, so only redirect once the code exists; otherwise show login.
+    const code = await requestHandoff(serverUrl, cookiesForApi);
+    if (!code) {
+      return withRotatedCookies(NextResponse.next(), rotatedCookies);
+    }
+
     const redirectResponse = NextResponse.redirect(
-      resolveDashboardUrl(role, request)
+      `${resolveDashboardUrl(role, request)}/session?code=${encodeURIComponent(code)}`
     );
     return withRotatedCookies(redirectResponse, rotatedCookies);
   } catch {

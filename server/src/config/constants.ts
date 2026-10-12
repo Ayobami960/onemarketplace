@@ -28,7 +28,7 @@ export const requireWebsite = (value: string | undefined): string => {
             throw new Error("Unsupported protocol.")
         }
     } catch (error) {
-       throw new ApiError(400, "Company website must be a valid HTTP URL.") 
+       throw new ApiError(400, "Company website must be a valid HTTPS URL.") 
     }
 
     return website;

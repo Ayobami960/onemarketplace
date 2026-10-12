@@ -21,6 +21,11 @@ const isVercel = process.env.VERCEL === "1";
 const app = express();
 
 app.disable("x-powered-by");
+
+// Vercel terminates TLS and forwards the client address in X-Forwarded-For.
+// Without this, every request shares the proxy IP, so the per-IP rate limiters
+// (login, OTP) would lock out all users at once in production.
+app.set("trust proxy", 1);
 app.use(`${API_PREFIX}/connects/webhook`, express.raw({type: "application/json"}),);
 
 

@@ -23,6 +23,7 @@ export const updateAccountProfileSchema = z.object({ firstName: nameSchema, last
 export const forgotPasswordSchema = z.object({ email: emailSchema });
 export const verifyEmailSchema = z.object({ email: emailSchema, code: z.string().regex(/^\d{6}$/) });
 export const resendOtpSchema = z.object({ email: emailSchema });
+export const handoffExchangeSchema = z.object({ code: z.string().trim().min(1).max(4096) });
 export const resetPasswordSchema = z.object({ email: emailSchema, code: z.string().regex(/^\d{6}$/), password: passwordSchema });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
@@ -30,3 +31,4 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type UpdateAccountProfileInput = z.infer<typeof updateAccountProfileSchema>;
 export type OtpInput = z.infer<typeof verifyEmailSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type HandoffExchangeInput = z.infer<typeof handoffExchangeSchema>;

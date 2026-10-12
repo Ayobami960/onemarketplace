@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, type SubmitEvent } from "react";
 import styles from "./signup.module.css";
 import { getCountries } from "./countries";
-import { postAuth, redirectToDashboard } from "../_components/auth-api";
+import { fetchCurrentAccount, postAuth, redirectToDashboard } from "../_components/auth-api";
 
 interface SignupFormProps {
   role: "client" | "freelancer";
@@ -76,8 +76,9 @@ export function SignupForm({ role }: SignupFormProps) {
     setStatus("");
     setIsError(false);
     try {
-      const account = await postAuth<{ role: "client" | "freelancer" }>("verify-email", { email, code });
-      redirectToDashboard(account.role);
+      await postAuth("verify-email", { email, code });
+      const account = await fetchCurrentAccount();
+      await redirectToDashboard(account.role);
     } catch (error) {
       setIsError(true);
       const message = error instanceof Error ? error.message : "We could not verify that code.";

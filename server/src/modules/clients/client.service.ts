@@ -165,17 +165,24 @@ export const saveClientProfile = async (input: SaveClientProfileInput): Promise<
         };
     });
 
-    await redis.setEx(
-        getAccountAuthCacheKey(input.userId, "client"),
-        ACCOUNT_AUTH_CACHE_TTL_SECONDS,
-        JSON.stringify({
-            userId: input.userId,
-            role: "client",
-            accountExists: true,
-            isOnboarded: true,
-            emailVerified: true,
-        }),
-    );
+    // Best-effort cache refresh: a Redis outage must not fail a committed save.
+    if (redis.isReady) {
+        try {
+            await redis.setEx(
+                getAccountAuthCacheKey(input.userId, "client"),
+                ACCOUNT_AUTH_CACHE_TTL_SECONDS,
+                JSON.stringify({
+                    userId: input.userId,
+                    role: "client",
+                    accountExists: true,
+                    isOnboarded: true,
+                    emailVerified: true,
+                }),
+            );
+        } catch (error) {
+            console.warn("Client auth cache could not be refreshed after profile save.", error);
+        }
+    }
 
     return {
         ...profile,

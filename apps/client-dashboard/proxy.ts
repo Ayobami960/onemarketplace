@@ -12,6 +12,9 @@ interface AccountResponse {
 const getServerUrl = (): string | undefined =>
     process.env.NEXT_PUBLIC_SERVER_URL?.replace(/\/+$/, "");
 
+const hasSessionCookies = (header: string): boolean =>
+    /(?:^|;\s*)om_(?:access|refresh)=/.test(header);
+
 const redirectToLanding = (path = "/login"): NextResponse => {
     const landingPage = process.env.NEXT_PUBLIC_CLIENT_LANDING_PAGE || "http://localhost:3000";
     return NextResponse.redirect(new URL(path, landingPage));
@@ -45,6 +48,16 @@ export default async function proxy(request: NextRequest) {
     if (!serverUrl) return redirectToLanding("/error?reason=auth_unavailable");
 
     const incomingCookies = request.headers.get("cookie") ?? "";
+
+    // Session cookies are scoped to the API origin. When this dashboard and the
+    // API are on different sites the browser never sends them here, so the
+    // session cannot be evaluated on the server. Defer to the client-side guard,
+    // which calls the API directly with credentials and applies the same role
+    // and onboarding rules instead of bouncing the user to /login.
+    if (!hasSessionCookies(incomingCookies)) {
+        return NextResponse.next();
+    }
+
     let cookiesForApi = incomingCookies;
     let rotatedCookies: string[] = [];
 
@@ -107,6 +120,6 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
     matcher: [
-        "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$).*)",
+        "/((?!api|session|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$).*)",
     ],
 };

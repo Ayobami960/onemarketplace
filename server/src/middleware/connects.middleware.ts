@@ -15,15 +15,23 @@ export const availableConnects: RequestHandler = asyncHandler( async (request, _
         next();
         return;
     }
-    
-    const cacheKey = getConnectsCacheKey(request.auth.userId);
-    const cachedConnects = await redis.get(cacheKey);
 
-    if(cachedConnects !== null){
-        request.availableConnects = Number(cachedConnects);
-        await redis.expire(cacheKey, CONNECTS_CACHE_TTL_SECONDS);
-        next();
-        return;
+    const cacheKey = getConnectsCacheKey(request.auth.userId);
+
+    // Redis is optional: fall back to the database whenever it is unavailable.
+    if (redis.isReady) {
+        try {
+            const cachedConnects = await redis.get(cacheKey);
+
+            if(cachedConnects !== null){
+                request.availableConnects = Number(cachedConnects);
+                await redis.expire(cacheKey, CONNECTS_CACHE_TTL_SECONDS);
+                next();
+                return;
+            }
+        } catch (error) {
+            console.warn("Connects cache could not be read.", error);
+        }
     }
 
     const [balance] = await db
@@ -34,11 +42,18 @@ export const availableConnects: RequestHandler = asyncHandler( async (request, _
 
 
     request.availableConnects = balance?.connects ?? 0;
-    await redis.setEx(
-        cacheKey,
-        CONNECTS_CACHE_TTL_SECONDS,
-        String(request.availableConnects)
-    );
+
+    if (redis.isReady) {
+        try {
+            await redis.setEx(
+                cacheKey,
+                CONNECTS_CACHE_TTL_SECONDS,
+                String(request.availableConnects)
+            );
+        } catch (error) {
+            console.warn("Connects cache could not be written.", error);
+        }
+    }
 
     next();
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, SubmitEvent } from "react";
 import styles from "../signup/signup.module.css";
-import { postAuth, redirectToDashboard } from "../_components/auth-api";
+import { fetchCurrentAccount, postAuth, redirectToDashboard } from "../_components/auth-api";
 
 export function LoginForm() {
     const [email, setEmail] = useState("");
@@ -30,11 +30,12 @@ export function LoginForm() {
         setStatus("");
         setIsError(false);
         try {
-            const account = await postAuth<{ role: "client" | "freelancer" }>("login", {
+            await postAuth("login", {
                 email: emailAddress,
                 password: String(form.get("password") ?? ""),
             });
-            redirectToDashboard(account.role);
+            const account = await fetchCurrentAccount();
+            await redirectToDashboard(account.role);
         } catch (error) {
             const message = error instanceof Error ? error.message : "We could not log you in.";
             if (message === "EMAIL_NOT_VERIFIED") {
@@ -63,8 +64,9 @@ export function LoginForm() {
         setStatus("");
         setIsError(false);
         try {
-            const account = await postAuth<{ role: "client" | "freelancer" }>("verify-email", { email, code });
-            redirectToDashboard(account.role);
+            await postAuth("verify-email", { email, code });
+            const account = await fetchCurrentAccount();
+            await redirectToDashboard(account.role);
         } catch (error) {
             setIsError(true);
             setStatus(error instanceof Error ? error.message : "We could not verify that code.");

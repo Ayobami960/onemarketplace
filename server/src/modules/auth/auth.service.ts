@@ -388,6 +388,78 @@ export const getMe = async (accountId: string): Promise<SafeAccount> => {
     return safeAccount(account);
 };
 
+/**
+ * One-time sign-in hand-off used when the landing page and the dashboards are
+ * separate origins (the default on Vercel). The landing page signs in, asks for
+ * a short-lived signed code, and redirects to the dashboard with it. The
+ * dashboard exchanges the code server-to-server and stores its own first-party
+ * session cookies, so no shared cookie domain is required.
+ *
+ * The code is a signed JWT bound to the session that created it. It is single
+ * use: exchanging it revokes that source session, so a replay is rejected.
+ */
+const handoffTtlSeconds = 60;
+
+export const createHandoffCode = async (
+    accountId: string,
+    sessionId: string,
+): Promise<{ code: string; expiresIn: number }> => {
+    const code = await new SignJWT({ sid: sessionId, type: "handoff" })
+        .setProtectedHeader({ alg: "HS256" })
+        .setSubject(accountId)
+        .setIssuedAt()
+        .setExpirationTime(`${handoffTtlSeconds}s`)
+        .sign(accessSecret);
+    return { code, expiresIn: handoffTtlSeconds };
+};
+
+export const exchangeHandoffCode = async (
+    code: string,
+    context: AuthRequestContext,
+): Promise<{ tokens: IssuedTokens; account: SafeAccount }> => {
+    let payload;
+    try {
+        ({ payload } = await jwtVerify(code, accessSecret, { algorithms: ["HS256"] }));
+    } catch {
+        throw new ApiError(401, "This sign-in link is invalid or has expired.");
+    }
+
+    if (payload.type !== "handoff" || typeof payload.sub !== "string" || typeof payload.sid !== "string") {
+        throw new ApiError(401, "This sign-in link is invalid or has expired.");
+    }
+
+    const [session] = await db.select({
+        id: sessions.id,
+        accountId: sessions.account_id,
+        role: accounts.role,
+        expiresAt: sessions.expires_at,
+        revokedAt: sessions.revoked_at,
+    }).from(sessions)
+        .innerJoin(accounts, eq(accounts.auth_id, sessions.account_id))
+        .where(and(eq(sessions.id, payload.sid), eq(sessions.account_id, payload.sub)))
+        .limit(1);
+
+    if (!session || session.revokedAt || session.expiresAt <= new Date()) {
+        throw new ApiError(401, "This sign-in link has already been used or has expired.");
+    }
+
+    // Single use: the source session is revoked in the same step that consumes
+    // the code, so a replayed code can never mint a second session.
+    const now = new Date();
+    await db.transaction(async (tx) => {
+        const [revoked] = await tx.update(sessions).set({ revoked_at: now })
+            .where(and(eq(sessions.id, session.id), isNull(sessions.revoked_at)))
+            .returning({ id: sessions.id });
+        if (!revoked) throw new ApiError(401, "This sign-in link has already been used or has expired.");
+    });
+
+    // A fresh session family keeps the landing page's revoked refresh token from
+    // tripping reuse detection against the dashboard session.
+    const tokens = await createSession(session.accountId, session.role, context);
+    const account = await getMe(session.accountId);
+    return { tokens, account };
+};
+
 export const updateAccountProfile = async (
     accountId: string,
     input: UpdateAccountProfileInput,

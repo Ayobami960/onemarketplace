@@ -12,6 +12,8 @@ All routes are under `/api/v1/auth`. JSON request bodies use `Content-Type: appl
 | `POST /verify-email` | `{ "email", "code": "000000" }` | `200`; marks the address verified, returns a safe account profile, and sets session cookies |
 | `POST /resend-otp` | `{ "email" }` | `200`; generic response whether or not a code was sent |
 | `POST /login` | `{ "email", "password" }` | `200`; returns a safe account profile and sets session cookies |
+| `POST /handoff` | No body; requires a session cookie | `200`; returns a one-time sign-in code for a sibling dashboard |
+| `POST /handoff/exchange` | `{ "code" }` | `200`; consumes the code, revokes the source session, and sets fresh session cookies |
 | `POST /refresh` | No body; uses the refresh cookie | `200`; rotates the refresh token and updates both cookies |
 | `POST /logout` | No body | `200`; revokes the presented refresh session and clears cookies |
 | `GET /me` | No body | `200`; returns the safe account profile |
@@ -30,7 +32,9 @@ Refresh tokens are opaque random values; only SHA-256 hashes are stored. Rotatio
 
 ## Cookies And Browser Security
 
-The cookies are `om_access` (default 15 minutes) and `om_refresh` (default 30 days). Both are `httpOnly`, `SameSite=Strict`, scoped to `/`, and `Secure` in production. `COOKIE_DOMAIN` can set a shared cookie domain when the API and dashboards use sibling subdomains. Browser clients must send requests with credentials enabled. The API uses `credentials: true` and an exact allow-list made from `ORIGINS_CLIENT_DASHBOARD`, `ORIGINS_CLIENT_LANDING_PAGE`, `ORIGINS_FREELANCER_DASHBOARD`, `ORIGINS_AGENCY_DASHBOARD`, and `ORIGINS_ADMIN_DASHBOARD`; refresh and logout additionally reject a supplied origin outside that list. `API_ALLOWED_ORIGINS` remains supported as a comma-separated compatibility setting. Keep dashboard origins and the API on a compatible site when relying on `SameSite=Strict`.
+The cookies are `om_access` (default 15 minutes) and `om_refresh` (default 30 days). Both are `httpOnly`, `SameSite=Lax`, scoped to `/`, and `Secure` in production. Browser clients never call the API directly: every frontend proxies `/api/v1/*` through its own origin (`app/api/v1/[...path]/route.ts`), so these cookies are first-party to the app that holds them. That works on separate Vercel domains with no shared cookie domain, and `COOKIE_DOMAIN` is therefore no longer required.
+
+Because the landing page and the dashboards are different origins, the signed-in session is handed over with a one-time code. The landing page calls `POST /auth/handoff`, redirects to `<dashboard>/session?code=…`, and the dashboard exchanges the code at `POST /auth/handoff/exchange` and stores its own first-party cookies. The code is signed, expires after 60 seconds, and is single use: exchanging it revokes the source session, so a replay fails. Browser clients must send requests with credentials enabled. The API uses `credentials: true` and an exact allow-list made from `ORIGINS_CLIENT_DASHBOARD`, `ORIGINS_CLIENT_LANDING_PAGE`, `ORIGINS_FREELANCER_DASHBOARD`, `ORIGINS_AGENCY_DASHBOARD`, and `ORIGINS_ADMIN_DASHBOARD`; refresh and logout additionally reject a supplied origin outside that list. `API_ALLOWED_ORIGINS` remains supported as a comma-separated compatibility setting.
 
 ## Configuration
 

@@ -36,3 +36,20 @@ export const requireRole = (...roles: Array<"client" | "freelancer">): RequestHa
     }
     next();
 };
+
+/**
+ * Blocks dashboard activities until the role profile has been saved.
+ * `isOnboarded` is read from the accounts row on every authenticated
+ * request, so enforcement follows the persisted server-side state.
+ */
+export const requireOnboarded: RequestHandler = (request, _response, next) => {
+    if (!request.auth) {
+        next(new ApiError(401, "Authentication is required."));
+        return;
+    }
+    if (!request.auth.isOnboarded) {
+        next(new ApiError(403, "Complete your profile before accessing this resource."));
+        return;
+    }
+    next();
+};

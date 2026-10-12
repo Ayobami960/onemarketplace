@@ -1,9 +1,11 @@
+/**
+ * All browser API calls go through this app's own `/api/v1` proxy so the session
+ * cookies stay first-party. That works on separate Vercel domains without a
+ * shared `COOKIE_DOMAIN`.
+ */
 export const clientApiFetch = (path: string, init: RequestInit = {}): Promise<Response> => {
-    const serverUrl = process.env.NEXT_PUBLIC_SERVER_URL?.replace(/\/+$/, "");
-    if (!serverUrl) throw new Error("NEXT_PUBLIC_SERVER_URL is not configured.");
-
     const apiPath = path.replace(/^\/+/, "");
-    return fetch(`${serverUrl}/api/v1/${apiPath}`, {
+    return fetch(`/api/v1/${apiPath}`, {
         ...init,
         credentials: "include",
         cache: init.cache ?? "no-store",

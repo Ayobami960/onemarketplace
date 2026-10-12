@@ -2,10 +2,10 @@ import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware.js";
 import { authLimiter, otpLimiter } from "./auth-limiter.js";
 import {
-    forgotPassword, login, logout, me, refresh, register, resendOtp, resetPassword, updateMe, verifyEmail,
+    exchangeHandoff, forgotPassword, handoff, login, logout, me, refresh, register, resendOtp, resetPassword, updateMe, verifyEmail,
 } from "./auth.controller.js";
 import {
-    forgotPasswordSchema, loginSchema, registerSchema, resendOtpSchema, resetPasswordSchema, updateAccountProfileSchema, verifyEmailSchema,
+    forgotPasswordSchema, handoffExchangeSchema, loginSchema, registerSchema, resendOtpSchema, resetPasswordSchema, updateAccountProfileSchema, verifyEmailSchema,
 } from "./auth.schemas.js";
 import { validate } from "./validate.js";
 import { assertSafeOrigin } from "./auth.controller.js";
@@ -20,5 +20,7 @@ authRouter.post("/forgot-password", authLimiter, otpLimiter, validate(forgotPass
 authRouter.post("/reset-password", authLimiter, otpLimiter, validate(resetPasswordSchema), resetPassword);
 authRouter.post("/verify-email", authLimiter, otpLimiter, validate(verifyEmailSchema), verifyEmail);
 authRouter.post("/resend-otp", authLimiter, otpLimiter, validate(resendOtpSchema), resendOtp);
+authRouter.post("/handoff", authenticate, handoff);
+authRouter.post("/handoff/exchange", assertSafeOrigin, validate(handoffExchangeSchema), exchangeHandoff);
 authRouter.get("/me", authenticate, me);
 authRouter.put("/me", authenticate, validate(updateAccountProfileSchema), updateMe);
