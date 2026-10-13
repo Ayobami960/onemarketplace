@@ -27,6 +27,7 @@ export interface FreelancerProfileData{
     skills: string[];
     languages: LanguageData[];
     portfolios: PortfolioData[];
+    avatarUrl: string;
     identityVerified: boolean;
     joined_at: Date | null;
 }
@@ -44,4 +45,5 @@ export interface SaveFreelancerProfileInput {
     skills: string[];
     languages: LanguageData[];
     portfolios: PortfolioData[];
+    avatarUrl: string;
 }

@@ -1,0 +1,1 @@
+ALTER TABLE "freelancer_metadata" ADD COLUMN "avatar_url" text;

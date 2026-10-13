@@ -198,6 +198,12 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(async (reques
         throw new ApiError(400, `Add between 1 and ${MAX_LANGUAGES} languages.`);
     }
 
+    const existingProfile = await getFreelancerProfile(auth.userId);
+    const avatarUrl =
+        typeof metadata.avatarUrl === "string" && metadata.avatarUrl.trim()
+            ? metadata.avatarUrl.trim()
+            : existingProfile?.avatarUrl ?? "";
+
     const input: SaveFreelancerProfileInput = {
         userId: auth.userId,
         professional_title: requireBoundedText(metadata.professional_title, "Professional title"),
@@ -235,6 +241,7 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(async (reques
             };
         }),
         portfolios,
+        avatarUrl,
     };
 
     const profile = await saveFreelancerProfile(input);

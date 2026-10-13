@@ -94,6 +94,7 @@ export const freelancer_metadata = pgTable("freelancer_metadata", {
         jsonb("languages").$type<
             Array<{language: string; proficiency: string }>
         >().notNull(),
+    avatar_url: text("avatar_url"),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow(),  
 

@@ -71,3 +71,9 @@ diff between SSE and WebSocket
 websocket can do tow way conminication why which mean i can send a message and i am also sending message to you white sse is i can send you a message but you can not send me a message.
 sse only send event from server to frontend and frontend can not send any data to sse
 websocket can send data i the frontend while sse can not
+
+
+
+
+
+

@@ -3,20 +3,23 @@
 import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { dashboardNotifications } from "../notifications/notifications-data";
-import { presentNotification, useNotifications, useNotificationStream } from "@/app/hooks/use-notifications";
+import {
+  presentNotification,
+  useNotifications,
+  useNotificationStream,
+} from "@/app/hooks/use-notifications";
 
 export function NotificationsPopover() {
-  
   const [open, setOpen] = useState(false);
-  const { notifications: data, isLoading, error, markAllRead, markRead } = useNotifications();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { notifications: data, unreadCount, isLoading, error, markAllRead, markRead } =
+    useNotifications();
+
+  // The only place the live stream is mounted.
+  useNotificationStream();
 
   const notifications = data.slice(0, 3).map(presentNotification);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const unreadCount = data.filter((item) => !item.is_read).length;
-
-
-  useNotificationStream();
 
   useEffect(() => {
     if (!open) return;
@@ -36,7 +39,6 @@ export function NotificationsPopover() {
     };
   }, [open]);
 
-
   return (
     <div ref={containerRef} className="relative">
       <button
@@ -52,7 +54,7 @@ export function NotificationsPopover() {
         <Icon icon={open ? "solar:bell-bold" : "solar:bell-linear"} width="22" />
         {unreadCount > 0 && (
           <span className="absolute top-1.5 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-[#5f8d5c] px-1 text-[8px] font-bold text-white">
-            {unreadCount}
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </button>
@@ -90,61 +92,84 @@ export function NotificationsPopover() {
             </header>
 
             <div className="max-h-105 overflow-y-auto">
-              {isLoading && 
-                [0, 2].map((_, index) => (
-                   <div
-                      key={index}
-                      className="flex animate-pulse gap-4 border-b border-black/6 px-6 py-5"
-                    >
-                      <span className="h-11 w-11 rounded-xl bg-[#e8ece6]" />
-                      <span className="flex-1">
-                        <span className="block h-3.5 w-48 rounded bg-[#e3e7e1]" />
-                        <span className="mt-3 block h-3 w-3/4 rounded bg-[#edf0eb]" />
-                      </span>
-                    </div>
+              {isLoading &&
+                [0, 1].map((item) => (
+                  <div
+                    key={item}
+                    role="status"
+                    aria-label="Loading notifications"
+                    className="flex animate-pulse gap-4 border-b border-black/6 px-6 py-5"
+                  >
+                    <span className="h-11 w-11 rounded-xl bg-[#e8ece6]" />
+                    <span className="flex-1">
+                      <span className="block h-3.5 w-48 rounded bg-[#e3e7e1]" />
+                      <span className="mt-3 block h-3 w-3/4 rounded bg-[#edf0eb]" />
+                    </span>
+                  </div>
                 ))}
-              {notifications.map((notification, index) => (
-                <Link
-                  key={notification.id}
-                  href={notification.href}
-                  onClick={() => {
-                   markRead(notification.id);
-                   setOpen(false)
-                  }}
-                  className={`relative flex gap-3.5 px-5 py-4 transition hover:bg-[#f7f8f5] ${
-                    index ? "border-t border-black/6" : ""
-                  } ${notification.unread ? "bg-[#f3f7f1]" : "bg-white"}`}
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#52784f] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
-                    <Icon icon={notification.icon} width="20" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold">
-                      {notification.title}
+
+              {!isLoading &&
+                !error &&
+                notifications.map((notification, index) => (
+                  <Link
+                    key={notification.id}
+                    href={notification.href}
+                    onClick={() => {
+                      if (notification.unread) markRead(notification.id);
+                      setOpen(false);
+                    }}
+                    className={`relative flex gap-3.5 px-5 py-4 transition hover:bg-[#f7f8f5] ${
+                      index ? "border-t border-black/6" : ""
+                    } ${notification.unread ? "bg-[#f3f7f1]" : "bg-white"}`}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#52784f] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+                      <Icon icon={notification.icon} width="20" />
                     </span>
-                    <span className="mt-1 block text-xs leading-5 text-[#737870]">
-                      {notification.description}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{notification.title}</span>
+                      <span className="mt-1 block text-xs leading-5 text-[#737870]">
+                        {notification.description}
+                      </span>
+                      <span className="mt-1.5 block text-[11px] text-[#93978f]">
+                        {notification.time}
+                      </span>
                     </span>
-                    <span className="mt-1.5 block text-[11px] text-[#93978f]">
-                      {notification.time}
-                    </span>
-                  </span>
-                  {notification.unread && (
-                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#5f8d5c]" />
-                  )}
-                </Link>
-              ))}
+                    {notification.unread && (
+                      <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[#5f8d5c]" />
+                    )}
+                  </Link>
+                ))}
             </div>
 
-            <footer className="border-t border-black/7 bg-[#fafbf9] p-3">
-              <Link
-                href="/notifications"
-                onClick={() => setOpen(false)}
-                className="flex h-10 w-full items-center justify-center rounded-xl text-xs font-semibold text-[#4e774b] hover:bg-[#edf4ea]"
-              >
-                View all notifications
-              </Link>
-            </footer>
+            {!isLoading && error && (
+              <div role="alert" className="px-6 py-10 text-center text-xs text-[#81867e]">
+                {error.message}
+              </div>
+            )}
+
+            {!isLoading && !error && notifications.length === 0 && (
+              <div className="px-6 py-10 text-center">
+                <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#edf4ea] text-[#52784f]">
+                  <Icon icon="solar:bell-off-linear" width="24" />
+                </span>
+                <p className="mt-3 text-sm font-semibold">No notifications yet</p>
+                <p className="mt-2 text-xs text-[#81867e]">
+                  New account and project updates will appear here.
+                </p>
+              </div>
+            )}
+
+            {!isLoading && !error && notifications.length > 0 && (
+              <footer className="border-t border-black/7 bg-[#fafbf9] p-3">
+                <Link
+                  href="/notifications"
+                  onClick={() => setOpen(false)}
+                  className="flex h-10 w-full items-center justify-center rounded-xl text-xs font-semibold text-[#4e774b] hover:bg-[#edf4ea]"
+                >
+                  View all notifications
+                </Link>
+              </footer>
+            )}
           </section>
         </>
       )}

@@ -136,7 +136,7 @@ export function FreelancerDashboard() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
-          <WorkspaceSidebar profileStrength={85} />
+          <WorkspaceSidebar />
 
           <section className="min-w-0">
             <div className="rounded-2xl border border-black/8 bg-white px-3 pt-3">

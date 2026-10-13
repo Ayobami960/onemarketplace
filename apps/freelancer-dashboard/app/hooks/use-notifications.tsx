@@ -12,6 +12,10 @@ import type {
 
 const BASE_RETRY_MS = 3_000;
 const MAX_RETRY_MS = 30_000;
+const STALE_MS = 30_000;
+
+// Use "client" in the client dashboard.
+const ROLE = "freelancer";
 
 type ApiResponse<T> = { success: boolean; message?: string; data?: T };
 
@@ -118,8 +122,9 @@ export const useNotifications = () => {
     const query = useQuery<AppNotification[]>({
         queryKey,
         enabled: Boolean(account.id),
+        staleTime: STALE_MS,
         queryFn: async () => {
-            const response = await clientApiFetch("notifications?role=freelancer");
+            const response = await clientApiFetch(`notifications?role=${ROLE}`);
             const result = (await response.json().catch(() => null)) as
                 ApiResponse<RawNotification[]> | null;
 
@@ -139,7 +144,7 @@ export const useNotifications = () => {
         );
 
     const requestRead = async (path: string) => {
-        const response = await clientApiFetch(`notifications/${path}?role=freelancer`, {
+        const response = await clientApiFetch(`notifications/${path}?role=${ROLE}`, {
             method: "PATCH",
         });
         if (!response.ok) {
@@ -171,7 +176,7 @@ export const useNotifications = () => {
 };
 
 /* -------------------------------------------------------------------------- */
-/*                         Live updates (mount ONCE)                          */
+/*                 Live updates (mounted ONCE, in the header)                 */
 /* -------------------------------------------------------------------------- */
 
 export const useNotificationStream = () => {
@@ -220,7 +225,7 @@ export const useNotificationStream = () => {
 
         const connect = async () => {
             try {
-                const response = await clientApiFetch("notifications/stream?role=freelancer", {
+                const response = await clientApiFetch(`notifications/stream?role=${ROLE}`, {
                     signal: controller.signal,
                     headers: { Accept: "text/event-stream" },
                 });

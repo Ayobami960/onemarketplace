@@ -1,21 +1,23 @@
 import { JSONCodec } from "nats";
+import { randomUUID } from "node:crypto";
 import { NOTIFICATIONS_SUBJECT, type NotificationEvent } from "./subjects.js";
 import { getNats } from "../config/nats.js";
-import { randomUUID } from "crypto";
-
-
 
 const codec = JSONCodec<NotificationEvent>();
 
-
-export const sendNotification = async (input: Omit<NotificationEvent, "eventId" | "createdAt">,) => {
+export const sendNotification = async (
+    input: Omit<NotificationEvent, "eventId" | "createdAt">,
+): Promise<NotificationEvent> => {
     const nats = await getNats();
-    const event = {
+    const event: NotificationEvent = {
         ...input,
         eventId: randomUUID(),
-        createdAt: new Date().toDateString(),
+        createdAt: new Date().toISOString(),
     };
 
-    await nats.jetstream().publish(NOTIFICATIONS_SUBJECT, codec.encode(event));
+    // msgID lets JetStream drop duplicates if a publish is retried.
+    await nats.jetstream().publish(NOTIFICATIONS_SUBJECT, codec.encode(event), {
+        msgID: event.eventId,
+    });
     return event;
-}
+};

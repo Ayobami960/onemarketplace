@@ -35,6 +35,7 @@ export const getFreelancerProfile = async (userId: string): Promise<FreelancerPr
 
     return {
         ...profile,
+        avatarUrl: profile.avatar_url ?? "",
         identityVerified: result.accounts.identityVerified === true,
         joined_at: profile.created_at,
         portfolios,
@@ -153,6 +154,7 @@ export const saveFreelancerProfile = async (
                 experience_level: input.experience_level,
                 skills: input.skills,
                 languages: input.languages,
+                avatar_url: input.avatarUrl || null,
             };
 
             // Upsert: one metadata row per auth_id, no duplicates.
@@ -199,6 +201,7 @@ export const saveFreelancerProfile = async (
                 experience_level: metadata.experience_level,
                 skills: metadata.skills,
                 languages: metadata.languages,
+                avatarUrl: metadata.avatar_url ?? "",
                 portfolios,
                 identityVerified: account.identityVerified === true,
                 joined_at: metadata.created_at,

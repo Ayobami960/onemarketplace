@@ -12,18 +12,17 @@ import { env } from "../../config/env.js";
 import { stripe } from "../../config/stripe.js";
 import type Stripe from "stripe";
 
-export const getAvailableConnects: RequestHandler = (request, response) => {
-    requireFreelancer(request);
+export const getAvailableConnects: RequestHandler = asyncHandler(async (request, response) => {
+    const auth = requireFreelancer(request);
 
-
-    const body: ApiResponse<{connects: number}> = {
+    const body: ApiResponse<{ connects: number }> = {
         success: true,
-        message: "Available  Connects retrieved",
-        data: {connects: request.availableConnects ?? 0},
+        message: "Available Connects retrieved",
+        data: { connects: request.availableConnects ?? 0 },
     };
 
     response.status(200).json(body);
-};
+});
 
 export const getLoggedInFreelancerConnectsHistory: RequestHandler = asyncHandler(async(request, response) => {
     const auth = requireFreelancer(request);

@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@iconify/react";
+import Image from "next/image";
 import Link from "next/link";
 import { useForm, useWatch } from "react-hook-form";
 import type { SubmitEvent } from "react";
@@ -13,6 +14,7 @@ import { countries } from "../utils/countries";
 import { useRouter } from "next/navigation";
 import { clientApiFetch } from "../utils/api";
 import { useClientAccount, type ClientAccount } from "../provider";
+import { AVATAR_QUERY_KEY, useAvatarUrl } from "../utils/profile-strength";
 
 const MAX_PORTFOLIO_PROJECTS = 12;
 const MAX_PORTFOLIO_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB, matches backend limit
@@ -63,6 +65,7 @@ type FreelancerProfileData = {
       url: string;
     };
   }>;
+  avatarUrl: string;
   identityVerified: boolean;
   joined_at: string | null;
 };
@@ -420,7 +423,14 @@ function ProfilePreview({ account, avatarUrl, profileMetaData }: {
             <section className="rounded-3xl border border-black/8 bg-white p-6 text-center">
               <div className=" mx-auto  w-28">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt={fullName} className="relative h-28 w-28 rounded-full object-cover" />
+                  <Image
+                    src={avatarUrl}
+                    alt={fullName}
+                    width={112}
+                    height={112}
+                    unoptimized
+                    className="relative h-28 w-28 rounded-full object-cover"
+                  />
                 ) : (
                   <span className="relative flex h-28 w-28 items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">{initials}</span>
                 )}
@@ -683,7 +693,7 @@ export function ProfileEditor({
   initialEditing?: boolean;
 }) {
   const account = useClientAccount();
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const avatarUrl = useAvatarUrl();
   const isEditing = initialEditing;
   const queryClient = useQueryClient();
 
@@ -1124,6 +1134,7 @@ export function ProfileEditor({
 
       return (await fetchProfileApi("PUT", {
         freelancer_metadata,
+        avatarUrl: avatarUrl ?? "",
 
         freelancer_portfolios: portfolios.map(
           ({
@@ -1205,6 +1216,11 @@ export function ProfileEditor({
         savedProfile,
       );
 
+      // Keep the shared avatar cache in sync with the saved profile.
+      if (savedProfile?.avatarUrl) {
+        queryClient.setQueryData(AVATAR_QUERY_KEY, savedProfile.avatarUrl);
+      }
+
       await queryClient.invalidateQueries({
         queryKey: ["profile-metadata"],
       });
@@ -1252,7 +1268,38 @@ export function ProfileEditor({
       const formData = new FormData();
       formData.append("avatar", file);
       const uploaded = await fetchApi("upload/avatar", "POST", formData) as { url: string };
-      setAvatarUrl(uploaded.url);
+
+      // Load the existing profile so we can preserve portfolios and metadata.
+      const existing = (await fetchProfileApi("GET")) as FreelancerProfileData | null;
+
+      // Persist the avatar URL to the freelancer profile so it survives
+      // across sessions and shows up in the sidebar and preview.
+      await fetchApi("freelancer/profile?role=freelancer", "PUT", {
+        freelancer_metadata: {
+          professional_title: existing?.professional_title ?? "",
+          professional_description: existing?.professional_description ?? "",
+          hourly_rate: Number(existing?.hourly_rate) || 20,
+          country: existing?.country ?? "",
+          city: existing?.city ?? "",
+          availability_status: existing?.availability_status ?? "AVAILABLE",
+          weekly_availability: existing?.weekly_availability ?? "20–30 hours / week",
+          experience_level: existing?.experience_level ?? "Entry",
+          skills: existing?.skills ?? [],
+          languages: existing?.languages ?? [],
+        },
+        avatarUrl: uploaded.url,
+        freelancer_portfolios: (existing?.portfolios ?? []).map((p) => ({
+          title: p.title,
+          category: p.category,
+          description: p.description,
+          live_url: p.live_url,
+          cover_image: p.cover_image,
+        })),
+      });
+
+      // Share the new avatar with the sidebar and preview through the same cache.
+      queryClient.setQueryData(AVATAR_QUERY_KEY, uploaded.url);
+      queryClient.invalidateQueries({ queryKey: ["profile-metadata"] });
       toast.success("Profile photo updated");
     } catch (error) {
       toast.error("The profile photo could not be updated.");
@@ -1627,7 +1674,14 @@ export function ProfileEditor({
               <div className="relative mx-auto h-24 w-24">
               
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt={[account.firstName, account.lastName].filter(Boolean).join(" ")} className="relative h-24 w-24 rounded-full object-cover" />
+                  <Image
+                    src={avatarUrl}
+                    alt={[account.firstName, account.lastName].filter(Boolean).join(" ")}
+                    width={96}
+                    height={96}
+                    unoptimized
+                    className="relative h-24 w-24 rounded-full object-cover"
+                  />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">
                     {[account.firstName, account.lastName].map((name) => name?.[0] ?? "").join("").toUpperCase() || "U"}

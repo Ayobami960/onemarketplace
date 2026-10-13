@@ -6,15 +6,13 @@ import { useMemo, useState } from "react";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "../_components/dashboard/workspace-sidebar";
 import type { DashboardNotification } from "../_components/notifications/types";
-import { presentNotification, useNotifications, useNotificationStream } from "../hooks/use-notifications";
+import { presentNotification, useNotifications } from "../hooks/use-notifications";
 
 const filters = ["All", "Contracts", "Proposals", "Messages", "Payments", "Account"];
 
 export function NotificationsDashboard() {
-  // useNotificationStream() is mounted once in the dashboard layout, not here.
+  // The live stream is mounted once, in the header popover. Do not mount it here.
   const { notifications: data, isLoading, error, markAllRead, markRead } = useNotifications();
-  useNotificationStream();
-  
 
   const [filter, setFilter] = useState("All");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -171,7 +169,9 @@ export function NotificationsDashboard() {
                           <div className="mt-3 flex flex-wrap items-center gap-3">
                             <Link
                               href={notification.href}
-                              onClick={() => notification.unread && markRead(notification.id)}
+                              onClick={() => {
+                                if (notification.unread) markRead(notification.id);
+                              }}
                               className="inline-flex items-center gap-1 text-xs font-semibold text-[#4e774b] hover:underline"
                             >
                               View {notification.category.toLowerCase()}
