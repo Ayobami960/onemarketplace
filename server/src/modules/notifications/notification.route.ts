@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware.js";
 import { listNotification, markAllNotificationsRead, notificationStream } from "./notification.controller.js";
-
+//
 export const notificationRouter = Router();
 
 notificationRouter.use(authenticate);
