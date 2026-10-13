@@ -8,6 +8,7 @@ import { freelancerRouter } from "../modules/freelancer/freelancer.route.js";
 import { jobRouter } from "../modules/jobs/jobs.route.js";
 import { uploadRouter } from "../modules/upload/upload.route.js";
 import { connectsRouter } from "../modules/connects/connects.route.js";
+import { notificationRouter } from "../modules/notifications/notification.route.js";
 
 export const apiRouter = Router();
 
@@ -17,6 +18,9 @@ apiRouter.use("/upload", uploadRouter);
 apiRouter.use("/connects", connectsRouter);
 apiRouter.use("/freelancer", freelancerRouter);
 apiRouter.use("/jobs", jobRouter);
+apiRouter.use("/notifications", notificationRouter);
+
+
 
 apiRouter.get("/", async (_request, response) => {
     let database: "connected" | "unavailable" = "connected";

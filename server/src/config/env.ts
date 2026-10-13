@@ -133,5 +133,19 @@ export const env = {
     },
     stripeSecretKey: process.env.STRIPE_SECRET_KEY,
     stripeWebhookKey: process.env.STRIPE_WEBHOOK_SECRET,
+    /*
+     * Secrets accepted by the reconciliation endpoint (any one of them).
+     * CONNECTS_RECONCILE_SECRET is this project's own secret, sent as
+     * x-reconcile-secret. CRON_SECRET is what Vercel injects into the
+     * Authorization header of a cron invocation. Set at least one to enable the
+     * endpoint; with none set it stays hidden behind a 404.
+     */
+    connectsReconcileSecrets: [
+        process.env.CONNECTS_RECONCILE_SECRET,
+        process.env.CRON_SECRET,
+    ]
+        .map((secret) => secret?.trim())
+        .filter((secret): secret is string => Boolean(secret)),
     freelancerDashboard: process.env.PUBLIC_FREELANCER_DASHBOARD || process.env.FREELANCER_DASHBOARD,
+    natsUrl: process.env.NATS_URL ?? "nats://localhost:4222"
 } as const;

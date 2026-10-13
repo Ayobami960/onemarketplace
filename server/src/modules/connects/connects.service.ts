@@ -1,6 +1,6 @@
 
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { CONNECTS_CACHE_TTL_SECONDS, CONNECTS_PLANS, getConnectsCacheKey, INITIAL_CONNECTS, PROPOSAL_CONNECTS, type ConnectsPlan } from "../../config/constants.js"
+import { CONNECTS_CACHE_TTL_SECONDS, CONNECTS_PLANS, CONNECTS_RECONCILE_LOOKBACK_HOURS, getConnectsCacheKey, INITIAL_CONNECTS, PROPOSAL_CONNECTS, type ConnectsPlan } from "../../config/constants.js"
 import { db } from "../../database/clients.js"
 import { connects, connects_history, connects_purchase_history } from "../../database/schema.js"
 import { ApiError } from "../../utils/api-error.js";
@@ -80,23 +80,28 @@ export const chargeConnects = async(
 };
 
 
+/*
+ * Refunds the Connects that were charged for a proposal. The balance and the
+ * history entry both move in the positive direction: this used to subtract
+ * again, which charged a second time for a withdrawn proposal.
+ */
 export const returnConnects = async (
     freelancerId: string,
     description: string,
 ) => {
     const balance = await db.transaction(async(transaction) => {
         const [balance] = await transaction.update(connects).set({
-            connects: sql`${connects.connects} - ${PROPOSAL_CONNECTS}`,
+            connects: sql`${connects.connects} + ${PROPOSAL_CONNECTS}`,
             updated_at: new Date(),
         }).where(eq(connects.freelancer_id, freelancerId),).returning();
 
-         if(!balance) throw new ApiError(400, "Connect balance not  found.");
+         if(!balance) throw new ApiError(400, "Connect balance not found.");
 
          await transaction.insert(connects_history).values({
             connects_id: balance.id,
-            type: "Proposal withdrawn refound",
+            type: "Proposal withdrawn refund",
              description,
-             amount: -PROPOSAL_CONNECTS,
+             amount: PROPOSAL_CONNECTS,
          });
 
          return balance;
@@ -146,7 +151,7 @@ export const createConnectsCheckout = async (freelancerId: string, purchasedConn
             freelancerId,
             purchasedConnects: String(purchasedConnects),
         },
-        success_url: `${env.freelancerDashboard}/settings?section=payment=success`,
+        success_url: `${new URL("/settings?section=connects&payment=success", env.freelancerDashboard).toString()}&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: new URL("/settings?section=connects", env.freelancerDashboard).toString(),
     });
 
@@ -190,4 +195,93 @@ export const completeConnectPurchase = async (
     });
 
     if (balance) await cacheBalance(freelancerId, balance.connects);
+    return balance?.connects;
+};
+
+export const getConnectsBalance = async (freelancerId: string): Promise<number> => {
+    const [balance] = await db
+        .select({ connects: connects.connects })
+        .from(connects)
+        .where(eq(connects.freelancer_id, freelancerId))
+        .limit(1);
+
+    return balance?.connects ?? 0;
+};
+
+export type ConnectsReconcileResult = {
+    scanned: number;
+    credited: Array<{ sessionId: string; freelancerId: string; connects: number }>;
+    skipped: number;
+};
+
+/**
+ * Credits paid Checkout Sessions that have no purchase record yet.
+ *
+ * A webhook can be missed entirely (bad endpoint, downtime, a lost delivery),
+ * which would leave a customer charged without Connects. This walks the Stripe
+ * sessions created inside the lookback window and credits the missing ones.
+ * `completeConnectPurchase` is keyed on the session id, so re-running this is
+ * always safe.
+ */
+export const reconcileUncreditedPurchases = async (
+    lookbackHours: number = CONNECTS_RECONCILE_LOOKBACK_HOURS,
+): Promise<ConnectsReconcileResult> => {
+    const result: ConnectsReconcileResult = { scanned: 0, credited: [], skipped: 0 };
+
+    if (!env.stripeSecretKey) return result;
+
+    const createdAfter = Math.floor(Date.now() / 1000) - lookbackHours * 60 * 60;
+    let startingAfter: string | undefined;
+
+    // Stripe lists newest first and caps a page at 100 sessions.
+    for (let page = 0; page < 20; page += 1) {
+        const sessions = await stripe.checkout.sessions.list({
+            limit: 100,
+            created: { gte: createdAfter },
+            ...(startingAfter ? { starting_after: startingAfter } : {}),
+        });
+
+        if (sessions.data.length === 0) break;
+
+        for (const session of sessions.data) {
+            result.scanned += 1;
+
+            const freelancerId = session.metadata?.freelancerId;
+            const purchasedConnects = Number(session.metadata?.purchasedConnects) as ConnectsPlan;
+
+            if (
+                session.payment_status !== "paid" ||
+                !freelancerId ||
+                !(purchasedConnects in CONNECTS_PLANS)
+            ) {
+                result.skipped += 1;
+                continue;
+            }
+
+            const creditedBalance = await completeConnectPurchase(
+                freelancerId,
+                purchasedConnects,
+                session.id,
+            );
+
+            // `undefined` means the purchase row already existed, so this
+            // session was credited earlier by the webhook or the buyer.
+            if (creditedBalance === undefined) {
+                result.skipped += 1;
+                continue;
+            }
+
+            result.credited.push({
+                sessionId: session.id,
+                freelancerId,
+                connects: purchasedConnects,
+            });
+        }
+
+        const lastSession = sessions.data[sessions.data.length - 1];
+        if (!sessions.has_more || !lastSession) break;
+        startingAfter = lastSession.id;
+    }
+
+    return result;
 };

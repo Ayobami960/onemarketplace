@@ -2,7 +2,7 @@ import type { DashboardNotification } from "./types";
 
 export const dashboardNotifications: DashboardNotification[] = [
   {
-    id: 7,
+    id: "7",
     icon: "solar:verified-check-linear",
     title: "Identity verification complete",
     description: "Your identity has been confirmed and your account is ready.",
@@ -13,7 +13,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: false,
   },
   {
-    id: 1,
+    id: "1",
     icon: "solar:chat-round-dots-linear",
     title: "New message from Northstar Labs",
     description: "Can you share an update on the notification milestone?",
@@ -24,7 +24,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: true,
   },
   {
-    id: 2,
+    id: "2",
     icon: "solar:check-circle-linear",
     title: "Milestone approved",
     description: "Lumen Research approved your architecture milestone.",
@@ -35,7 +35,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: true,
   },
   {
-    id: 3,
+    id: "3",
     icon: "solar:eye-linear",
     title: "Your proposal was viewed",
     description: "Aster Technologies viewed your dashboard proposal.",
@@ -46,7 +46,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: false,
   },
   {
-    id: 4,
+    id: "4",
     icon: "solar:wallet-money-linear",
     title: "Payment released",
     description: "A $3,000 milestone payment from Northstar Labs is now available.",
@@ -57,7 +57,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: true,
   },
   {
-    id: 5,
+    id: "5",
     icon: "solar:case-round-linear",
     title: "New contract started",
     description: "Your contract with Commonfolk Studio is now active.",
@@ -68,7 +68,7 @@ export const dashboardNotifications: DashboardNotification[] = [
     unread: false,
   },
   {
-    id: 6,
+    id: "6",
     icon: "solar:chat-round-check-linear",
     title: "Interview invitation",
     description: "Northstar Labs invited you to discuss their collaborative workspace.",

@@ -1,6 +1,6 @@
 "use client";
 
-import { clientApiFetch } from "@/app/utils/api";
+import { clientApiFetch, isNetworkError } from "@/app/utils/api";
 import { Icon } from "@iconify/react";
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
@@ -22,6 +22,7 @@ type CheckoutResponse = {
 export function FinanceModal({ mode, onClose }: FinanceModalProps) {
   const [complete, setComplete] = useState(false);
   const [connects, setConnects] = useState(40);
+  const [error, setError] = useState<string | null>(null);
   const buying = mode === "connects";
 
    const checkout = useMutation({
@@ -53,6 +54,15 @@ export function FinanceModal({ mode, onClose }: FinanceModalProps) {
     onSuccess: (url) => {
       window.location.assign(url);
     },
+    onError: (cause) => {
+      setError(
+        isNetworkError(cause)
+          ? "We couldn't reach the payment service. Check your internet connection and try again."
+          : cause instanceof Error
+            ? cause.message
+            : "Something went wrong. Please try again.",
+      );
+    },
   });
  
 
@@ -74,7 +84,13 @@ export function FinanceModal({ mode, onClose }: FinanceModalProps) {
       <form 
         onSubmit={(event) => { 
           event.preventDefault(); 
-          buying ? checkout.mutate() : setComplete(true)
+          setError(null);
+
+          if (buying) {
+            checkout.mutate();
+          } else {
+            setComplete(true);
+          }
         }} 
         className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl sm:p-7">
         <div className="flex items-start justify-between">
@@ -107,6 +123,11 @@ export function FinanceModal({ mode, onClose }: FinanceModalProps) {
             <label className="mt-4 block text-xs font-semibold">Withdrawal method<select className="mt-2 h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm font-normal"><option>Payoneer •••• 4821</option></select></label>
             <div className="mt-4 flex justify-between text-xs text-[#737870]"><span>Processing fee</span><strong className="text-[#343833]">$1.00</strong></div>
           </>
+        )}
+        {error && (
+          <p role="alert" className="mt-5 rounded-xl bg-[#fbeceb] px-4 py-3 text-xs leading-5 font-medium text-[#a3463d]">
+            {error}
+          </p>
         )}
         <div className="mt-6 flex justify-end gap-2">
           <button 

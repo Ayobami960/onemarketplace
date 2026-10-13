@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-
+// landing-page
 interface AccountResponse {
   success: boolean;
   data?: {

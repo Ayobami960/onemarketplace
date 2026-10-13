@@ -1,5 +1,14 @@
 export type Role = "client" | "freelancer";
 
+/**
+ * `fetch` rejects with a TypeError when the request never reached the server,
+ * and the browser reports offline while the connection is unavailable.
+ */
+export const isNetworkError = (cause: unknown): boolean => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return true;
+    return cause instanceof TypeError;
+};
+
 type ApiResponse<T> = {
   success: boolean;
   message: string;
@@ -33,6 +42,11 @@ export async function postAuth<T = undefined>(
  * cookies. A successful login/verification response does not by itself prove
  * that the browser stored the cookie, so the role used for redirection always
  * comes from this server-confirmed call.
+ *
+ * On a non-200 response the function throws the raw `Response` object so the
+ * caller can classify the failure (unauthenticated vs offline vs server_error)
+ * using `classifyAuthFailure`. A network error from `fetch` throws a TypeError
+ * which the caller will also classify.
  */
 export async function fetchCurrentAccount(): Promise<{ role: Role }> {
   const response = await fetch("/api/v1/auth/me", {
@@ -45,9 +59,7 @@ export async function fetchCurrentAccount(): Promise<{ role: Role }> {
   const role = result?.data?.role;
 
   if (!response.ok || !result?.success || !role) {
-    throw new Error(
-      "We signed you in but could not confirm the session. Allow cookies for this site and try again.",
-    );
+    throw response;
   }
 
   if (role !== "client" && role !== "freelancer") {

@@ -96,3 +96,7 @@ docker compose exec -T redis sh -c 'redis-cli -a "$REDIS_PASSWORD" ping'
 ```
 
 The expected response is `PONG`.
+openssl rand -hex 32
+ 
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+

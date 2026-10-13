@@ -37,7 +37,10 @@ export function LoginForm() {
             const account = await fetchCurrentAccount();
             await redirectToDashboard(account.role);
         } catch (error) {
-            const message = error instanceof Error ? error.message : "We could not log you in.";
+            const message =
+                error instanceof Error ? error.message
+                : error instanceof Response ? `HTTP ${error.status}: ${error.statusText || "Server error"}`
+                : "We could not log you in.";
             if (message === "EMAIL_NOT_VERIFIED") {
                 setVerifyEmail(true);
                 try {
@@ -69,7 +72,11 @@ export function LoginForm() {
             await redirectToDashboard(account.role);
         } catch (error) {
             setIsError(true);
-            setStatus(error instanceof Error ? error.message : "We could not verify that code.");
+            setStatus(
+                error instanceof Error ? error.message
+                : error instanceof Response ? `HTTP ${error.status}: ${error.statusText || "Server error"}`
+                : "We could not verify that code.",
+            );
         } finally {
             setIsLoading(false);
         }
@@ -87,7 +94,11 @@ export function LoginForm() {
         } catch (error) {
             setResendCooldown(60);
             setIsError(true);
-            setStatus(error instanceof Error ? error.message : "We could not send a new code.");
+            setStatus(
+                error instanceof Error ? error.message
+                : error instanceof Response ? `HTTP ${error.status}: ${error.statusText || "Server error"}`
+                : "We could not send a new code.",
+            );
         } finally {
             setIsLoading(false);
         }

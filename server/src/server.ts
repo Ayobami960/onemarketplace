@@ -11,8 +11,11 @@ import { errorHandler } from "./middleware/error.middleware.js";
 import { connectRedis, disconnectRedis } from "./config/redis.js";
 import { connectDatabase, disconnectDatabase } from "./database/clients.js";
 import { verifyMailer } from "./modules/auth/mailer.js";
-
+import { disconnectNats } from "./config/nats.js";
+import { startNotificationConsumer, stopNotificationConsumer } from "./events/consumer.js";
+import { startConnectsReconciliation } from "./modules/connects/connects.scheduler.js";
 const isVercel = process.env.VERCEL === "1";
+const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 /* -------------------------------------------------------------------------- */
 /*                                Express app                                 */
@@ -26,7 +29,13 @@ app.disable("x-powered-by");
 // Without this, every request shares the proxy IP, so the per-IP rate limiters
 // (login, OTP) would lock out all users at once in production.
 app.set("trust proxy", 1);
-app.use(`${API_PREFIX}/connects/webhook`, express.raw({type: "application/json"}),);
+// Stripe needs the untouched raw body for signature verification. Both spellings
+// are registered because the Stripe CLI command in Read.md forwards to
+// /connects/webhooks while the router serves /connects/webhook.
+app.use(
+    [`${API_PREFIX}/connects/webhook`, `${API_PREFIX}/connects/webhooks`],
+    express.raw({ type: "application/json" }),
+);
 
 
 
@@ -58,6 +67,7 @@ app.use(express.urlencoded({ extended: true }));
 /* -------------------------------------------------------------------------- */
 
 let server: Server | undefined;
+let connectsReconcileTimer: NodeJS.Timeout | undefined;
 let isShuttingDown = false;
 let servicesReady: Promise<void> | undefined;
 
@@ -163,11 +173,20 @@ const closeHttpServer = (): Promise<void> =>
 
 const start = async (): Promise<void> => {
     await initServices();
-    if (isShuttingDown) {
-        return;
-    }
+    if (isShuttingDown) return;
 
     server = await startHttpServer();
+
+    // NATS is optional for serving HTTP; don't crash the API if it's down.
+    try {
+        await startNotificationConsumer();
+    } catch (error) {
+        console.warn("Notification consumer failed to start.", error);
+    }
+
+     // Safety net for Connects purchases whose Stripe webhook never arrived.
+    // Serverless hosts run the same work from POST /connects/reconcile instead.
+    connectsReconcileTimer = startConnectsReconciliation();
 };
 
 const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
@@ -175,6 +194,11 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
         return;
     }
     isShuttingDown = true;
+
+    if (connectsReconcileTimer) {
+        clearInterval(connectsReconcileTimer);
+        connectsReconcileTimer = undefined;
+    }
 
     console.log(`${reason}. Closing services.`);
 
@@ -187,18 +211,31 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
 
     let failed = false;
 
-    try {
+
+        try {
         await closeHttpServer();
     } catch (error) {
         failed = true;
         console.error("Failed to close HTTP server.", error);
     }
 
-    // Independent resources: close together so one failure doesn't block the other.
+    // 1. Stop consuming and flush buffered notifications (needs DB + NATS alive).
+    try {
+        await stopNotificationConsumer();
+    } catch (error) {
+        failed = true;
+        console.error("Failed to stop notification consumer.", error);
+    }
+
+    // 2. Now the independent resources can close together. Independent resources: close together so one failure doesn't block the other.
+
     const results = await Promise.allSettled([
         disconnectDatabase(),
+        disconnectNats(),
         disconnectRedis(),
     ]);
+
+  
 
     for (const result of results) {
         if (result.status === "rejected") {
@@ -210,7 +247,7 @@ const shutdown = async (reason: string, exitCode = 0): Promise<void> => {
     process.exit(failed ? 1 : exitCode);
 };
 
-const SHUTDOWN_TIMEOUT_MS = 10_000;
+
 
 if (!isVercel) {
     process.on("SIGINT", () => void shutdown("SIGINT received"));

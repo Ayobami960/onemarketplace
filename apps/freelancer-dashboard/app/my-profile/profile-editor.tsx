@@ -355,7 +355,7 @@ function ProfilePreview({ account, avatarUrl, profileMetaData }: {
   profileMetaData: FreelancerProfileData | null | undefined;
 }) {
   const fullName = [account.firstName, account.lastName].filter(Boolean).join(" ") || account.email;
-  const initials = [account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U";
+  const initials = [account.firstName, account.lastName].map((name) => name?.[0] ?? "").join("").toUpperCase() || "U";
   const completedJobs = [
     {
       title: "Build a collaborative analytics dashboard",
@@ -1630,7 +1630,7 @@ export function ProfileEditor({
                   <img src={avatarUrl} alt={[account.firstName, account.lastName].filter(Boolean).join(" ")} className="relative h-24 w-24 rounded-full object-cover" />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center rounded-full bg-[#496e67] text-2xl font-semibold text-white">
-                    {[account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U"}
+                    {[account.firstName, account.lastName].map((name) => name?.[0] ?? "").join("").toUpperCase() || "U"}
                   </span>
                 )}
                 <label className="absolute right-0 bottom-0 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border-2 border-white bg-[#252724] text-white">

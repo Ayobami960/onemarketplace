@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { settingsSections } from "../_components/settings/settings-data";
+import { settingsSections, type SettingsSectionId } from "../_components/settings/settings-data";
 import { SettingsDashboard } from "./settings-dashboard";
 
 export const metadata: Metadata = {
@@ -11,19 +10,30 @@ export const metadata: Metadata = {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{ section?: string; payment?: string; session_id?: string }>;
 }) {
-  const { section } = await searchParams;
-  const validSection = settingsSections.some((item) => item.id === section);
+  const { section, payment, session_id: checkoutSessionId } = await searchParams;
+  const paymentSucceeded = payment === "success";
 
-  if (!validSection) {
-    redirect("/settings?section=overview");
-  }
+  /*
+   * Resolve the section instead of redirect()ing an unknown one. Stripe returns
+   * here with `?payment=success` (and no valid section), and a redirect aborts
+   * the server render mid-measurement, which trips the known React/Turbopack
+   * dev bug: "cannot have a negative time stamp".
+   */
+  const validSection = settingsSections.some((item) => item.id === section);
+  const initialSection: SettingsSectionId = validSection
+    ? (section as SettingsSectionId)
+    : paymentSucceeded
+      ? "connects"
+      : "overview";
 
   return (
     <SettingsDashboard
-      key={section}
-      initialSection={section}
+      key={initialSection}
+      initialSection={initialSection}
+      paymentSucceeded={paymentSucceeded}
+      checkoutSessionId={checkoutSessionId}
     />
   );
 }

@@ -91,7 +91,7 @@ export function AccountDropdown() {
   };
 
   const fullName = [account.firstName, account.lastName].filter(Boolean).join(" ") || account.email;
-  const initials = [account.firstName, account.lastName].map((name) => name[0] ?? "").join("").toUpperCase() || "U";
+  const initials = [account.firstName, account.lastName].map((name) => name?.[0] ?? "").join("").toUpperCase() || "U";
 
 
   return (

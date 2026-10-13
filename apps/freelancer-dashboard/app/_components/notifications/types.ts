@@ -6,7 +6,7 @@ export type NotificationCategory =
   | "Account";
 
 export type DashboardNotification = {
-  id: number;
+  id: string;
   icon: string;
   title: string;
   description: string;

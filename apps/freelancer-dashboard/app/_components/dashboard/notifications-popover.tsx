@@ -4,14 +4,19 @@ import { Icon } from "@iconify/react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { dashboardNotifications } from "../notifications/notifications-data";
+import { presentNotification, useNotifications, useNotificationStream } from "@/app/hooks/use-notifications";
 
 export function NotificationsPopover() {
+  
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState(
-    dashboardNotifications.slice(0, 3),
-  );
+  const { notifications: data, isLoading, error, markAllRead, markRead } = useNotifications();
+
+  const notifications = data.slice(0, 3).map(presentNotification);
   const containerRef = useRef<HTMLDivElement>(null);
-  const unreadCount = notifications.filter((item) => item.unread).length;
+  const unreadCount = data.filter((item) => !item.is_read).length;
+
+
+  useNotificationStream();
 
   useEffect(() => {
     if (!open) return;
@@ -31,11 +36,6 @@ export function NotificationsPopover() {
     };
   }, [open]);
 
-  const markAllRead = () => {
-    setNotifications((current) =>
-      current.map((notification) => ({ ...notification, unread: false })),
-    );
-  };
 
   return (
     <div ref={containerRef} className="relative">
@@ -81,7 +81,7 @@ export function NotificationsPopover() {
               {unreadCount > 0 && (
                 <button
                   type="button"
-                  onClick={markAllRead}
+                  onClick={() => markAllRead()}
                   className="cursor-pointer text-xs font-semibold text-[#52784f] hover:underline"
                 >
                   Mark all as read
@@ -90,19 +90,26 @@ export function NotificationsPopover() {
             </header>
 
             <div className="max-h-105 overflow-y-auto">
+              {isLoading && 
+                [0, 2].map((_, index) => (
+                   <div
+                      key={index}
+                      className="flex animate-pulse gap-4 border-b border-black/6 px-6 py-5"
+                    >
+                      <span className="h-11 w-11 rounded-xl bg-[#e8ece6]" />
+                      <span className="flex-1">
+                        <span className="block h-3.5 w-48 rounded bg-[#e3e7e1]" />
+                        <span className="mt-3 block h-3 w-3/4 rounded bg-[#edf0eb]" />
+                      </span>
+                    </div>
+                ))}
               {notifications.map((notification, index) => (
                 <Link
                   key={notification.id}
                   href={notification.href}
                   onClick={() => {
-                    setNotifications((current) =>
-                      current.map((item) =>
-                        item.id === notification.id
-                          ? { ...item, unread: false }
-                          : item,
-                      ),
-                    );
-                    setOpen(false);
+                   markRead(notification.id);
+                   setOpen(false)
                   }}
                   className={`relative flex gap-3.5 px-5 py-4 transition hover:bg-[#f7f8f5] ${
                     index ? "border-t border-black/6" : ""

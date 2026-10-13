@@ -45,6 +45,14 @@ export const getConnectsCacheKey = (userId: string): string =>
 
 export const CONNECTS_CACHE_TTL_SECONDS =  10 * 60
 
+/*
+ * Safety net for purchases whose Stripe webhook never arrived. A background job
+ * re-checks paid Checkout Sessions created within the lookback window and
+ * credits any that have no purchase record yet.
+ */
+export const CONNECTS_RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+export const CONNECTS_RECONCILE_LOOKBACK_HOURS = 48;
+
 
 export const CONNECTS_PLANS = {
     20: 300,
