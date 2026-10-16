@@ -9,6 +9,8 @@ import { DashboardHeader } from "@/app/_components/dashboard/dashboard-header";
 import { useClientAccount } from "@/app/provider";
 import { clientApiFetch } from "@/app/utils/api";
 import { countries } from "@/app/utils/countries";
+import { useProposalMetadata } from "@/app/hooks/use-proposal-metadata";
+import { useMemo } from "react";
 
 type JobDetailsData = {
   id: string;
@@ -88,9 +90,6 @@ const JobDetailsSkeleton = () => (
 const JobDetails = () => {
   const { id } = useParams<{ id: string }>();
   const account = useClientAccount();
-  const router = useRouter();
-
-
 
   const {
     data: job,
@@ -122,6 +121,23 @@ const JobDetails = () => {
       return result.data;
     },
   });
+
+
+
+  const { data: proposalMetadata, isLoading: proposalMetadataLoading } =
+      useProposalMetadata();
+  
+    const hasApplied =
+      proposalMetadata?.proposals?.some((proposal) => proposal.jobId === id) ??
+      false;
+  
+    const appliedJobIds = useMemo(
+      () =>
+        new Set(
+          proposalMetadata?.proposals?.map((proposal) => proposal.jobId) ?? [],
+        ),
+      [proposalMetadata],
+    );
 
 
 
@@ -278,10 +294,32 @@ const JobDetails = () => {
                  ${Number(job.total_budget).toLocaleString()}
               </p>
               <p className="mt-2 text-xs leading-5 text-[#777d75]">Protected through milestone-based payments.</p>
-              <Link href={`/?proposal=${id}`} className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#252724] px-5 py-3 text-sm font-semibold text-white! hover:bg-[#3b3e39]">Submit a proposal</Link>
-              <button type="button" className="mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-black/10 px-5 py-3 text-sm font-semibold hover:bg-black/3">
-                <Icon icon="solar:bookmark-linear" width="18" /> Save job
-              </button>
+             {proposalMetadataLoading || hasApplied ? (
+                <button
+                  type="button"
+                  disabled
+                  className="mt-6 flex w-full cursor-not-allowed items-center justify-center rounded-xl bg-[#dfe3dc] px-5 py-3 text-sm font-semibold text-[#747a72]"
+                >
+                  {hasApplied ? "Proposal submitted" : "Checking proposal..."}
+                </button>
+              ) : (
+                <>
+                  <Link
+                    href={`/?proposal=${id}`}
+                    className="mt-6 flex w-full items-center justify-center rounded-xl bg-[#252724] px-5 py-3 text-sm font-semibold text-white! hover:bg-[#3b3e39]"
+                  >
+                    Submit a proposal
+                  </Link>
+
+                  <button
+                    type="button"
+                    disabled={appliedJobIds.has(job.id)}
+                    className="mt-3 disabled:opacity-50 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-black/10 px-5 py-3 text-sm font-semibold hover:bg-black/3"
+                  >
+                    <Icon icon="solar:bookmark-linear" width="18" /> Save job
+                  </button>
+                </>
+              )}
               <p className="mt-5 text-center text-xs text-[#81867e]">
                 {proposalLabel(job.proposalCount)} proposals
                 </p>

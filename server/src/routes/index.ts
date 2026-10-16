@@ -9,6 +9,7 @@ import { jobRouter } from "../modules/jobs/jobs.route.js";
 import { uploadRouter } from "../modules/upload/upload.route.js";
 import { connectsRouter } from "../modules/connects/connects.route.js";
 import { notificationRouter } from "../modules/notifications/notification.route.js";
+import { proposalRouter } from "../modules/proposals/proposals.route.js";
 
 export const apiRouter = Router();
 
@@ -19,6 +20,7 @@ apiRouter.use("/connects", connectsRouter);
 apiRouter.use("/freelancer", freelancerRouter);
 apiRouter.use("/jobs", jobRouter);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/proposals", proposalRouter);
 
 
 

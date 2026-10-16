@@ -33,11 +33,11 @@ function ProfileSummarySkeleton() {
 }
 
 type WorkspaceSidebarProps = {
-  fullName: string;
-  title?: string | undefined;
-  avatarUrl?: string | undefined;
-  strengthPercent: number;
-  strengthSuggestions: string[];
+  fullName?: string | null;
+  title?: string | null;
+  avatarUrl?: string | null;
+  strengthPercent?: number;
+  strengthSuggestions?: string[];
   loading?: boolean;
 };
 
@@ -45,15 +45,17 @@ export function WorkspaceSidebar({
   fullName,
   title,
   avatarUrl,
-  strengthPercent,
-  strengthSuggestions,
+  strengthPercent = 0,
+  strengthSuggestions = [],
   loading = false,
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
   const showSkeleton = loading;
 
+  const safeName = fullName?.trim() || "";
+
   const initials =
-    fullName
+    safeName
       .split(" ")
       .filter(Boolean)
       .slice(0, 2)
@@ -70,7 +72,7 @@ export function WorkspaceSidebar({
             {avatarUrl ? (
               <Image
                 src={avatarUrl}
-                alt={fullName}
+                alt={safeName || "Profile photo"}
                 width={48}
                 height={48}
                 unoptimized
@@ -85,7 +87,7 @@ export function WorkspaceSidebar({
               </span>
             )}
             <div className="min-w-0">
-              <h2 className="truncate font-semibold">{fullName}</h2>
+              <h2 className="truncate font-semibold">{safeName}</h2>
               <p className="truncate text-xs text-[#7b8078]">{title}</p>
             </div>
           </div>

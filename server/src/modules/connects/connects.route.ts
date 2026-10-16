@@ -4,6 +4,7 @@ import { availableConnects } from "../../middleware/connects.middleware.js";
 import { buyConnects, confirmConnectsPurchase, connectsWebhook, getAvailableConnects, getLoggedInFreelancerConnectsHistory, reconcileConnectsPurchases } from "./connects.controller.js";
 
 export const connectsRouter = Router();
+connectsRouter.use(authenticate, requireOnboarded, availableConnects);
 
 /*
  * Stripe must reach these before the auth middleware below: an unknown path
@@ -20,7 +21,6 @@ connectsRouter.post("/webhooks", connectsWebhook);
  */
 connectsRouter.get("/reconcile", reconcileConnectsPurchases);
 connectsRouter.post("/reconcile", reconcileConnectsPurchases);
-connectsRouter.use(authenticate, requireOnboarded, availableConnects);
 connectsRouter.get("/", getAvailableConnects);
 connectsRouter.get("/history", getLoggedInFreelancerConnectsHistory);
 connectsRouter.post("/checkout", buyConnects);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "../_components/dashboard/workspace-sidebar";
+import { useSidebarProfile } from "../hooks/use-sidebar-profile";
 
 type Job = {
   id: number;
@@ -71,6 +72,7 @@ export function SavedJobsDashboard() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("recent");
   const [removed, setRemoved] = useState<Job | null>(null);
+  const sidebar = useSidebarProfile();
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -89,7 +91,7 @@ export function SavedJobsDashboard() {
       <DashboardHeader />
       <main className="mx-auto max-w-360 px-5 py-8 sm:px-8 lg:py-10">
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-          <WorkspaceSidebar />
+          <WorkspaceSidebar {...sidebar} />
           <div className="min-w-0">
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div><p className="text-xs font-semibold tracking-[0.14em] text-[#62805f] uppercase">Your shortlist</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">Saved jobs</h1><p className="mt-2 text-sm text-[#72776f]">Keep promising opportunities together and apply when you’re ready.</p></div>

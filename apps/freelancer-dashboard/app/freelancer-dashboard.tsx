@@ -18,48 +18,15 @@ import { ProposalModal } from "./_components/jobs/proposal-modal";
 import type { Job } from "./_components/jobs/types";
 import { useClientAccount } from "./provider";
 import { clientApiFetch } from "./utils/api";
-
-type FreelancerProfile = {
-  professional_title: string;
-  professional_description: string;
-  hourly_rate: string;
-  country: string;
-  city: string;
-  skills: string[];
-  languages: unknown[];
-  avatarUrl: string;
-  portfolios: unknown[];
-  identityVerified: boolean;
-};
+import { useSidebarProfile } from "./hooks/use-sidebar-profile";
+import { useProposalMetadata } from "./hooks/use-proposal-metadata";
+import { useSavedJobs } from "./hooks/use-saved-jobs";
 
 export const proposalRange = (range: string) => {
   if (range === "Less than 5") return { maxProposals: "4" };
   if (range === "5 to 10") return { minProposals: "5", maxProposals: "10" };
   if (range === "10 to 15") return { minProposals: "10", maxProposals: "15" };
   return {};
-};
-
-const getProfileStrength = (profile?: FreelancerProfile | null) => {
-  const checks: [boolean, string][] = [
-    [Boolean(profile?.professional_title), "Add a professional title"],
-    [
-      Boolean(profile?.professional_description),
-      "Write a professional description",
-    ],
-    [Boolean(profile?.hourly_rate), "Set your hourly rate"],
-    [Boolean(profile?.country && profile?.city), "Add your location"],
-    [(profile?.skills.length ?? 0) > 0, "Add your skills"],
-    [(profile?.languages.length ?? 0) > 0, "Add the languages you speak"],
-    [Boolean(profile?.avatarUrl), "Upload a profile photo"],
-    [(profile?.portfolios.length ?? 0) > 0, "Add a portfolio project"],
-    [profile?.identityVerified === true, "Verify your identity"],
-  ];
-
-  const done = checks.filter(([ok]) => ok).length;
-  return {
-    percent: (done / checks.length) * 100,
-    suggestions: checks.filter(([ok]) => !ok).map(([, label]) => label),
-  };
 };
 
 function getGreeting(date: Date = new Date()): string {
@@ -71,6 +38,23 @@ function getGreeting(date: Date = new Date()): string {
   return "Good night";
 }
 
+// Maps an API row into the UI's Job shape (used for both normal and saved jobs).
+const mapJob = (job: any): Job => ({
+  id: String(job.id),
+  title: job.title,
+  company: job.companyName,
+  verified: job.paymentVerified,
+  posted: format(job.published_at ?? job.created_at ?? new Date()),
+  type: "Fixed price" as const,
+  budget: `$${Number(job.total_budget).toLocaleString()}`,
+  level: job.expertise_level,
+  duration: job.expected_duration,
+  description: job.description,
+  skills: job.skills ?? [],
+  proposals: String(job.proposalCounts ?? 0),
+  featured: (job.matchScore ?? 0) >= 4,
+  screeningQuestions: job.screeningQuestions ?? job.screening_questions ?? [],
+});
 
 const JobCardsSkeleton = () => (
   <div className="grid gap-4" role="status" aria-label="Loading job posts">
@@ -102,11 +86,21 @@ const JobCardsSkeleton = () => (
 export function FreelancerDashboard() {
   const account = useClientAccount();
   const router = useRouter();
+  const sidebar = useSidebarProfile();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Best matches");
-  const [saved, setSaved] = useState<number[]>([]);
   const [proposalJob, setProposalJob] = useState<Job | null>(null);
   const [filters, setFilters] = useState<JobFilters>(emptyJobFilters);
+
+  const {
+    savedRows,
+    savedIds,
+    isLoading: savedLoading,
+    isError: savedError,
+    toggleSaved: toggleSavedRow,
+  } = useSavedJobs();
+
+  const isSavedTab = activeTab === "Saved jobs";
 
   const greeting = getGreeting();
   const today = new Date().toLocaleDateString("en-US", {
@@ -114,8 +108,6 @@ export function FreelancerDashboard() {
     month: "long",
     day: "numeric",
   });
-
-  const fullName = [account.firstName].filter(Boolean).join(" ") || account.email;
 
   const activeFilterCount =
     filters.experienceLevels.length +
@@ -150,35 +142,6 @@ export function FreelancerDashboard() {
     },
   });
 
-  const { data: profile, isLoading: profileLoading } = useQuery({
-    queryKey: ["freelancer-profile"],
-    enabled: Boolean(account),
-    retry: 1,
-    staleTime: 30_000,
-    queryFn: async () => {
-      // Change this path to wherever getLoggedInFreelancerProfileHandler is mounted.
-      const response = await clientApiFetch("freelancer/profile");
-
-      if (!response.ok) {
-        throw new Error(`Failed to load profile (${response.status})`);
-      }
-
-      const result = (await response.json()) as {
-        success: boolean;
-        message?: string;
-        data?: FreelancerProfile | null;
-      };
-
-      if (!result.success) {
-        throw new Error(result.message || "Could not load profile.");
-      }
-
-      return result.data ?? null;
-    },
-  });
-
-  const strength = useMemo(() => getProfileStrength(profile), [profile]);
-
   const query = useMemo(() => {
     const params = new URLSearchParams({
       role: "freelancer",
@@ -206,7 +169,8 @@ export function FreelancerDashboard() {
     isError: jobsError,
   } = useQuery({
     queryKey: ["freelancer-jobs", query],
-    enabled: Boolean(account),
+    // The Saved tab has its own data source, so skip this request there.
+    enabled: Boolean(account) && !isSavedTab,
     retry: 1,
     staleTime: 30_000,
     queryFn: async () => {
@@ -219,7 +183,7 @@ export function FreelancerDashboard() {
       const result = (await response.json()) as {
         success: boolean;
         message?: string;
-        data?: Job[];
+        data?: unknown[];
       };
 
       if (!result.success || !result.data) {
@@ -230,50 +194,47 @@ export function FreelancerDashboard() {
     },
   });
 
-  // Map API rows into the UI's Job shape.
-  // clientRating, clientSpent and location are optional on Job, so they are omitted.
-  const mappedJobs = useMemo<Job[]>(
+  const { data: proposalMetadata, isLoading: proposalMetaLoading } =
+    useProposalMetadata();
+
+  const appliedJobIds = useMemo(
     () =>
-      jobs.map((job: any) => ({
-        id: job.id,
-        title: job.title,
-        company: job.companyName,
-        verified: job.paymentVerified,
-        posted: format(job.published_at ?? job.created_at ?? new Date()),
-        type: "Fixed price" as const,
-        budget: `$${Number(job.total_budget).toLocaleString()}`,
-        level: job.expertise_level,
-        duration: job.expected_duration,
-        description: job.description,
-        skills: job.skills,
-        proposals: String(job.proposalCounts),
-        featured: (job.matchScore ?? 0) >= 4,
-      })),
-    [jobs],
+      new Set(
+        proposalMetadata?.proposals?.map((proposal) => proposal.jobId) ?? [],
+      ),
+    [proposalMetadata],
+  );
+
+  // Saved tab reads from the saved-jobs endpoint; other tabs use the job feed.
+  const mappedJobs = useMemo<Job[]>(
+    () => (isSavedTab ? savedRows : (jobs as any[])).map(mapJob),
+    [isSavedTab, savedRows, jobs],
   );
 
   // The server already applies level, duration, budget, proposals and
-  // payment filters, so only search text and the Saved tab are handled here.
+  // payment filters, so only the search text is handled here.
   const visibleJobs = useMemo(() => {
     const term = search.trim().toLowerCase();
+    if (!term) return mappedJobs;
 
-    return mappedJobs.filter((job) => {
-      const searchable = [job.title, job.company, job.description, ...job.skills]
+    return mappedJobs.filter((job) =>
+      [job.title, job.company, job.description, ...job.skills]
         .join(" ")
-        .toLowerCase();
-
-      if (term && !searchable.includes(term)) return false;
-      if (activeTab === "Saved jobs") return saved.includes(job.id);
-      return true;
-    });
-  }, [activeTab, mappedJobs, saved, search]);
-
-  const toggleSaved = (id: number) =>
-    setSaved((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
+        .toLowerCase()
+        .includes(term),
     );
+  }, [mappedJobs, search]);
+
+  const toggleSaved = (id: string) => {
+    const row =
+      savedRows.find((item) => String(item.id) === id) ??
+      (jobs as any[]).find((item) => String(item.id) === id);
+
+    if (row) toggleSavedRow(row);
+  };
+
+  const listLoading = isSavedTab ? savedLoading : jobsLoading;
+  const listError = isSavedTab ? savedError : jobsError;
 
   return (
     <div className="min-h-svh bg-[#f4f6f2] font-(family-name:--font-dm-sans) text-[#242724]">
@@ -284,7 +245,7 @@ export function FreelancerDashboard() {
           <div>
             <p className="text-sm font-medium text-[#62805f]">{today}</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
-              {greeting}, {fullName}.
+              {greeting}, {sidebar.fullName}.
             </h1>
             <p className="mt-2 text-sm text-[#72776f]">
               Here are fresh opportunities matched to your profile.
@@ -309,14 +270,7 @@ export function FreelancerDashboard() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
-          <WorkspaceSidebar
-            fullName={fullName}
-            title={profile?.professional_title}
-            avatarUrl={profile?.avatarUrl}
-            strengthPercent={strength.percent}
-            strengthSuggestions={strength.suggestions}
-            loading={profileLoading}
-          />
+          <WorkspaceSidebar {...sidebar} />
 
           <section className="min-w-0">
             <div className="rounded-2xl border border-black/8 bg-white px-3 pt-3">
@@ -326,8 +280,9 @@ export function FreelancerDashboard() {
                     key={tab}
                     type="button"
                     onClick={() => setActiveTab(tab)}
-                    className={`relative shrink-0 cursor-pointer px-4 py-3 text-sm font-semibold ${activeTab === tab ? "text-[#4d764a]" : "text-[#777c74]"
-                      }`}
+                    className={`relative shrink-0 cursor-pointer px-4 py-3 text-sm font-semibold ${
+                      activeTab === tab ? "text-[#4d764a]" : "text-[#777c74]"
+                    }`}
                   >
                     {tab}
                     {activeTab === tab && (
@@ -340,7 +295,11 @@ export function FreelancerDashboard() {
                 <div>
                   <h2 className="font-semibold">{activeTab}</h2>
                   <p className="mt-0.5 text-xs text-[#858a82]">
-                    {visibleJobs.length} opportunities based on your skills
+                    {isSavedTab
+                      ? `${visibleJobs.length} saved ${
+                          visibleJobs.length === 1 ? "job" : "jobs"
+                        }`
+                      : `${visibleJobs.length} opportunities based on your skills`}
                   </p>
                 </div>
                 <JobFilterPopover
@@ -353,14 +312,12 @@ export function FreelancerDashboard() {
             </div>
 
             <div className="mt-4 grid gap-4">
-              {jobsLoading && (
-                <JobCardsSkeleton />
-              )}
+              {listLoading && <JobCardsSkeleton />}
 
-              {jobsError && !jobsLoading && (
+              {listError && !listLoading && (
                 <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
                   <h2 className="text-lg font-semibold">
-                    Could not load jobs
+                    {isSavedTab ? "Could not load saved jobs" : "Could not load jobs"}
                   </h2>
                   <p className="mt-2 text-sm text-[#777c74]">
                     Please refresh the page and try again.
@@ -368,31 +325,33 @@ export function FreelancerDashboard() {
                 </div>
               )}
 
-              {!jobsLoading &&
-                !jobsError &&
+              {!listLoading &&
+                !listError &&
                 visibleJobs.map((job) => (
                   <JobCard
                     key={job.id}
                     job={job}
-                    saved={saved.includes(job.id)}
+                    saved={savedIds.has(job.id)}
                     onSave={() => toggleSaved(job.id)}
                     onPropose={() => setProposalJob(job)}
+                    hasApplied={appliedJobIds.has(job.id)}
+                    proposalMetadataLoading={proposalMetaLoading}
                   />
                 ))}
 
-              {!jobsLoading && !jobsError && !visibleJobs.length && (
+              {!listLoading && !listError && !visibleJobs.length && (
                 <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
                   <Icon
                     icon="solar:case-minimalistic-linear"
                     width="34"
                     className="mx-auto text-[#7c8179]"
                   />
-                  <h2 className="mt-4 text-lg font-semibold">
-                    No jobs here yet
-                  </h2>
+                  <h2 className="mt-4 text-lg font-semibold">No jobs here yet</h2>
                   <p className="mt-2 text-sm text-[#777c74]">
-                    {activeTab === "Saved jobs"
-                      ? "Save a job and it will appear here."
+                    {isSavedTab
+                      ? search.trim()
+                        ? "No saved jobs match your search."
+                        : "Save a job and it will appear here."
                       : activeFilterCount
                         ? "Try adjusting or clearing your job filters."
                         : "Try a broader search term."}
@@ -415,14 +374,18 @@ export function FreelancerDashboard() {
               </div>
               <div className="mt-5 grid grid-cols-3 gap-2 text-center">
                 {[
-                  ["7", "Active"],
-                  ["3", "Viewed"],
-                  ["2", "Interviews"],
+                  [String(proposalMetadata?.counts?.active ?? "..."), "Active"],
+                  [String(proposalMetadata?.counts?.viewed ?? "..."), "Viewed"],
+                  [
+                    String(proposalMetadata?.counts?.interviewed ?? "..."),
+                    "Interviews",
+                  ],
                 ].map(([value, label], index) => (
                   <div
                     key={label}
-                    className={`rounded-xl px-2 py-3 ${index === 2 ? "bg-[#eaf3e7]" : "bg-[#f2f4f0]"
-                      }`}
+                    className={`rounded-xl px-2 py-3 ${
+                      index === 2 ? "bg-[#eaf3e7]" : "bg-[#f2f4f0]"
+                    }`}
                   >
                     <strong
                       className={
@@ -469,10 +432,7 @@ export function FreelancerDashboard() {
               <p className="mt-1 text-xs text-[#aeb6ad]">
                 +$1,240 from last month
               </p>
-              <div
-                className="mt-5 flex h-14 items-end gap-2"
-                aria-hidden="true"
-              >
+              <div className="mt-5 flex h-14 items-end gap-2" aria-hidden="true">
                 {[35, 52, 44, 70, 59, 86, 100].map((height, index) => (
                   <span
                     key={index}
@@ -489,9 +449,10 @@ export function FreelancerDashboard() {
               </span>
               <h2 className="mt-4 font-semibold">Stand out to clients</h2>
               <p className="mt-2 text-xs leading-5 text-[#667064]">
-                {profileLoading
+                {sidebar.loading
                   ? "Checking your profile…"
-                  : (strength.suggestions[0] ?? "Your profile is complete. Great work!")}
+                  : (sidebar.strengthSuggestions[0] ??
+                    "Your profile is complete. Great work!")}
               </p>
               <Link
                 href="/my-profile"

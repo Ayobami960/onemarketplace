@@ -9,11 +9,13 @@ import { InboxList } from "../_components/messages/inbox-list";
 import { initialConversations } from "../_components/messages/messages-data";
 import type { Conversation } from "../_components/messages/types";
 import type { ContractMessage } from "../_components/messages/types";
+import { useSidebarProfile } from "../hooks/use-sidebar-profile";
 
 export function MessagesDashboard() {
   const [conversations, setConversations] = useState(initialConversations);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const sidebar = useSidebarProfile();
 
   const selected =
     conversations.find((conversation) => conversation.id === selectedId) ?? null;
@@ -98,7 +100,7 @@ export function MessagesDashboard() {
       <main className="mx-auto max-w-360 px-5 py-6 sm:px-8 lg:py-8">
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
           <div className="hidden xl:block">
-            <WorkspaceSidebar />
+            <WorkspaceSidebar {...sidebar} />
           </div>
 
           <div className="min-w-0">

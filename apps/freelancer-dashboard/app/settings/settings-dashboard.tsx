@@ -20,6 +20,7 @@ import {
   IdentityVerificationPanel,
   WithdrawalPanel,
 } from "../_components/settings/settings-panels";
+import { useSidebarProfile } from "../hooks/use-sidebar-profile";
 
 const validSections: SettingsSectionId[] = [
   "overview",
@@ -51,6 +52,8 @@ export function SettingsDashboard({
   );
   const [modal, setModal] = useState<"connects" | "withdraw" | null>(null);
   const [statementOpen, setStatementOpen] = useState(false);
+    const sidebar = useSidebarProfile();
+  
   /*
    * The first render already knows what to show: a returning buyer arrives with
    * the checkout flags set. Seeding the state here instead of in the effect
@@ -167,7 +170,7 @@ export function SettingsDashboard({
       <DashboardHeader />
       <main className="mx-auto max-w-360 px-5 py-8 sm:px-8 lg:py-10">
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-          <WorkspaceSidebar />
+          <WorkspaceSidebar  {...sidebar}/>
           <div className="min-w-0">
             <div>
               <p className="text-xs font-semibold tracking-[0.14em] text-[#62805f] uppercase">Account center</p>

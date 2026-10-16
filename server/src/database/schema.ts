@@ -313,3 +313,39 @@ export const proposalsRelations = relations(proposals, ({one}) => ({
         references: [job_posts.id]
     }),
 }));
+
+
+
+export const freelancer_saved_job_posts = pgTable(
+  "freelancer_saved_job_posts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    job_id: uuid("job_id")
+      .notNull()
+      .references(() => job_posts.id, { onDelete: "cascade" }),
+    freelancer_id: text("freelancer_id")
+      .notNull()
+      .references(() => freelancer_metadata.auth_id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("freelancer_saved_job_posts_freelancer_job_unique").on(
+      table.freelancer_id,
+      table.job_id,
+    ),
+  ],
+);
+
+export const freelancerSavedJobPostRelations = relations(
+  freelancer_saved_job_posts,
+  ({ one }) => ({
+    job: one(job_posts, {
+      fields: [freelancer_saved_job_posts.job_id],
+      references: [job_posts.id],
+    }),
+    freelancer: one(freelancer_metadata, {
+      fields: [freelancer_saved_job_posts.freelancer_id],
+      references: [freelancer_metadata.auth_id],
+    }),
+  }),
+);

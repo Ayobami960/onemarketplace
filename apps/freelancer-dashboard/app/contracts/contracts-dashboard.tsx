@@ -9,12 +9,14 @@ import { SubmitWorkModal } from "../_components/contracts/submit-work-modal";
 import type { Contract } from "../_components/contracts/types";
 import { DashboardHeader } from "../_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "../_components/dashboard/workspace-sidebar";
+import { useSidebarProfile } from "../hooks/use-sidebar-profile";
 
 export function ContractsDashboard() {
   const [status, setStatus] = useState("All running");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Contract | null>(null);
   const [submitTarget, setSubmitTarget] = useState<Contract | null>(null);
+  const sidebar = useSidebarProfile();
 
   const visibleContracts = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -33,7 +35,7 @@ export function ContractsDashboard() {
       <DashboardHeader />
       <main className="mx-auto max-w-360 px-5 py-8 sm:px-8 lg:py-10">
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-          <WorkspaceSidebar />
+          <WorkspaceSidebar {...sidebar} />
           <div className="min-w-0">
             <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div>

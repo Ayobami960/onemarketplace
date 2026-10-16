@@ -1,6 +1,6 @@
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db } from "../../database/clients.js";
-import { job_posts } from "../../database/schema.js";
+import { accounts, client_metadata, freelancer_saved_job_posts, job_posts, proposals } from "../../database/schema.js";
 import { ApiError } from "../../utils/api-error.js";
 import { imageKit } from "../../config/imageKit.js";
 import { env } from "../../config/env.js";
@@ -172,3 +172,84 @@ export const deleteJobPost = async (userId: string, jobId: string) => {
     await deleteDocuments(job.attachments ?? []);
     return job;
 }
+
+
+
+export const saveJobPost = async (freelancerId: string, jobId: string) => {
+  const [job] = await db
+    .select({ id: job_posts.id })
+    .from(job_posts)
+    .where(and(eq(job_posts.id, jobId), eq(job_posts.status, "PUBLISHED")))
+    .limit(1);
+  if (!job) throw new ApiError(404, "Job post not found.");
+
+  const [savedJob] = await db
+    .insert(freelancer_saved_job_posts)
+    .values({
+      freelancer_id: freelancerId,
+      job_id: jobId,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (savedJob) return savedJob;
+  const [existingSavedJob] = await db
+    .select()
+    .from(freelancer_saved_job_posts)
+    .where(
+      and(
+        eq(freelancer_saved_job_posts.freelancer_id, freelancerId),
+        eq(freelancer_saved_job_posts.job_id, jobId),
+      ),
+    )
+    .limit(1);
+  return existingSavedJob!;
+};
+
+export const getSavedJobPosts = async (freelancerId: string) => {
+  const rows = await db
+    .select({
+      job: job_posts,
+      savedAt: freelancer_saved_job_posts.created_at,
+      companyName: client_metadata.company_name,
+      paymentVerified: accounts.paymentMethodVerified,
+      proposalCount: sql<number>`(
+        SELECT count(*) FROM ${proposals}
+        WHERE ${proposals.job_id} = ${job_posts.id}
+      )`.mapWith(Number),
+    })
+    .from(freelancer_saved_job_posts)
+    .innerJoin(job_posts, eq(freelancer_saved_job_posts.job_id, job_posts.id))
+    .innerJoin(accounts, eq(job_posts.client_id, accounts.auth_id))
+    .innerJoin(
+      client_metadata,
+      eq(job_posts.client_id, client_metadata.auth_id),
+    )
+    .where(eq(freelancer_saved_job_posts.freelancer_id, freelancerId))
+    .orderBy(desc(freelancer_saved_job_posts.created_at));
+
+  return rows.map(({ job, savedAt, companyName, paymentVerified, proposalCount }) => ({
+    ...job,
+    savedAt,
+    companyName,
+    paymentVerified: paymentVerified === true,
+    proposalCount,
+  }));
+};
+
+export const removeSavedJobPost = async (
+  freelancerId: string,
+  jobId: string,
+) => {
+  const [savedJob] = await db
+    .delete(freelancer_saved_job_posts)
+    .where(
+      and(
+        eq(freelancer_saved_job_posts.freelancer_id, freelancerId),
+        eq(freelancer_saved_job_posts.job_id, jobId),
+      ),
+    )
+    .returning();
+  if (!savedJob) throw new ApiError(404, "Saved job post not found.");
+  return savedJob;
+};

@@ -7,6 +7,8 @@ type JobCardProps = {
   saved: boolean;
   onSave: () => void;
   onPropose: () => void;
+  hasApplied: boolean;
+  proposalMetadataLoading: boolean;
 };
 
 
@@ -27,6 +29,8 @@ export function JobCard({
   saved,
   onSave,
   onPropose,
+  hasApplied,
+  proposalMetadataLoading
 }: JobCardProps) {
   return (
     <article className="rounded-2xl border border-black/8 bg-white p-5 transition hover:border-black/14 hover:shadow-lg hover:shadow-black/4 sm:p-7">
@@ -122,7 +126,8 @@ export function JobCard({
         <button
           type="button"
           onClick={onPropose}
-          className="cursor-pointer rounded-xl bg-[#252724] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3b3e39]"
+          disabled={proposalMetadataLoading || hasApplied}
+          className="cursor-pointer disabled:cursor-no-drop rounded-xl bg-[#252724] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3b3e39] disabled:opacity-50"
         >
           Submit a proposal
         </button>
