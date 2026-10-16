@@ -9,6 +9,19 @@ type JobCardProps = {
   onPropose: () => void;
 };
 
+
+const formatProposalCount = (value: string) => {
+  const count = Number(value);
+
+  if (count < 5) return "Less than 5 proposals";
+  if (count < 10) return "5 to 10 proposals";
+  if (count < 15) return "10 to 15 proposals";
+  if (count < 20) return "15 to 20 proposals";
+  return "20+ proposals";
+};
+
+
+
 export function JobCard({
   job,
   saved,
@@ -67,7 +80,7 @@ export function JobCard({
         <span>{job.level}</span>
         <span>{job.duration}</span>
       </div>
-      <p className="mt-5 text-sm leading-6 text-[#626860]">{job.description}</p>
+      <p className="mt-5 text-sm line-clamp-2 leading-6 text-[#626860]">{job.description}</p>
       <div className="mt-5 flex flex-wrap gap-2">
         {job.skills.map((skill) => (
           <span
@@ -83,19 +96,27 @@ export function JobCard({
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[#737870]">
             <strong className="font-semibold text-[#30342f]">{job.company}</strong>
-            {job.verified && (
-              <span className="inline-flex items-center gap-1 font-semibold text-[#4f784c]">
-                <Icon icon="solar:verified-check-bold" width="15" />
-                Payment verified
+            
+              <span
+              className={`inline-flex items-center gap-1 font-semibold ${
+              job.verified ? "text-[#4f784c]" : "text-[#a6534d]"}`}>
+                <Icon icon={job.verified ? "solar:verified-check-bold" : "solar:close-circle-bold"} width="15" />
+                {job.verified ? "Payment verified" : "Payment not verified"}
               </span>
-            )}
-            <span className="text-[#d2a43a]">★</span>
-            <span>{job.clientRating.toFixed(1)}</span>
-            <span>{job.clientSpent}</span>
-            <span>{job.location}</span>
+
+              {job.clientRating !== undefined && (
+                <>
+              <span className="text-[#d2a43a]">★</span>
+            <span>{job?.clientRating.toFixed(1)}</span>
+                </>
+              )}
+            
+           
+            <span>{job.clientSpent && <span>{job.clientSpent}</span>}</span>
+            <span>{job.location && <span>{job.location}</span>}</span>
           </div>
           <p className="mt-2 text-xs text-[#858a82]">
-            {job.proposals} proposals
+            {formatProposalCount(job.proposals)}
           </p>
         </div>
         <button

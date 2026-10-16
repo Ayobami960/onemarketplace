@@ -1,7 +1,8 @@
 import {Router} from "express";
-import { isAuthenticated } from "../../middleware/auth.middleware.js";
+import { authenticate, requireRole } from "../../middleware/auth.middleware.js";
 import { getLoggedInClientProfile, upsertClientProfile } from "./client.controller.js";
 
 export const clientRouter = Router();
-clientRouter.get("/profile", isAuthenticated, getLoggedInClientProfile);
-clientRouter.put("/profile", isAuthenticated, upsertClientProfile);
+clientRouter.use(authenticate, requireRole("client"));
+clientRouter.get("/profile", getLoggedInClientProfile);
+clientRouter.put("/profile", upsertClientProfile);

@@ -3,9 +3,10 @@ import { ApiError } from "../../utils/api-error.js";
 import { asyncHandler } from "../../utils/async-handler.js";
 import type { ApiResponse } from "../../types/common.types.js";
 import type { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
-import { getFreelancerProfile, saveFreelancerProfile } from "./freelancer.service.js";
+import { getFreelancerJobPost, getFreelancerProfile, getMatchedJobPosts, saveFreelancerProfile } from "./freelancer.service.js";
 import { requireText } from "../../config/constants.js";
 import { env } from "../../config/env.js";
+import { request } from "node:http";
 
 export const requireFreelancer = (request: Parameters<RequestHandler>[0]) => {
     if (!request.auth) throw new ApiError(401, "Authentication is required.");
@@ -145,6 +146,19 @@ const parsePortfolioInput = (portfolios: unknown): PortfolioData[] => {
     });
 };
 
+
+
+export type JobFeedFilters = {
+    sort?: "best-match" | "recent" | undefined;
+    levels?: string[] | undefined;
+    durations?: string[] | undefined;
+    minBudget?: number | undefined;
+    maxBudget?: number | undefined;
+    minProposals?: number | undefined;
+    maxProposals?: number | undefined;
+    paymentVerified?: boolean | undefined;
+};
+
 export const getLoggedInFreelancerProfileHandler: RequestHandler = asyncHandler(async (request, response) => {
     const auth = requireFreelancer(request);
     const profile = await getFreelancerProfile(auth.userId);
@@ -199,10 +213,15 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(async (reques
     }
 
     const existingProfile = await getFreelancerProfile(auth.userId);
+
+    // Accept avatarUrl from either the top-level body (client convention) or
+    // from inside freelancer_metadata, matching the client-dashboard pattern.
     const avatarUrl =
-        typeof metadata.avatarUrl === "string" && metadata.avatarUrl.trim()
-            ? metadata.avatarUrl.trim()
-            : existingProfile?.avatarUrl ?? "";
+        typeof body.avatarUrl === "string" && body.avatarUrl.trim()
+            ? body.avatarUrl.trim()
+            : typeof metadata.avatarUrl === "string" && metadata.avatarUrl.trim()
+                ? metadata.avatarUrl.trim()
+                : existingProfile?.avatarUrl ?? "";
 
     const input: SaveFreelancerProfileInput = {
         userId: auth.userId,
@@ -253,3 +272,55 @@ export const upsertFreelanceProfile: RequestHandler = asyncHandler(async (reques
     };
     return response.status(200).json(responseBody);
 });
+
+
+
+export const getFreelancerJobFeed: RequestHandler = asyncHandler(async (request, response) => {
+    const auth = requireFreelancer(request);
+
+    const list = (value: unknown) =>
+        typeof value === "string" ? value.split(",").filter(Boolean) : undefined;
+
+    const number = (value: unknown) => {
+        if (value === undefined || value === "") return undefined;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
+    const filters: JobFeedFilters = {
+        sort: (request.query.sort ?? request.query.filter) === "recent" ? "recent" : "best-match",
+        levels: list(request.query.levels),
+        durations: list(request.query.durations),
+        minBudget: number(request.query.minBudget),
+        maxBudget: number(request.query.maxBudget),
+        minProposals: number(request.query.minProposals),
+        maxProposals: number(request.query.maxProposals),
+        paymentVerified: request.query.paymentVerified === "true",
+    };
+
+    const jobs = await getMatchedJobPosts(auth.userId, filters);
+
+    response.status(200).json({
+        success: true,
+        message: filters.sort === "recent"
+            ? "Recent job posts retrieved."
+            : "Matched job posts retrieved.",
+        data: jobs,
+    });
+});
+
+export const getFreelancerJobDetails: RequestHandler = asyncHandler (
+    async (request, response) => {
+    requireFreelancer(request);
+    const job = await getFreelancerJobPost(
+        requireText(request.params.id, "Job ID"),
+    );
+
+    response.status(200).json({
+        success: true,
+        message: "Job post retrieved",
+        data: job
+    })
+
+    }
+)

@@ -11,7 +11,7 @@ export const getAccountAuthCacheKey = (
 
 
 
-export const requireText = (value: string | undefined, fieldName: string): string => {
+export const requireText = (value: string | undefined | string[], fieldName: string): string => {
     if(typeof value !== "string" || !value.trim()){
         throw new ApiError(400, `${fieldName} is required.`)
     }

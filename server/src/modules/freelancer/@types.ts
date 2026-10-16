@@ -47,3 +47,15 @@ export interface SaveFreelancerProfileInput {
     portfolios: PortfolioData[];
     avatarUrl: string;
 }
+
+
+export type JobFeedFilters = {
+    sort?: "best-match" | "recent" | undefined;
+    levels?: string[] | undefined;
+    durations?: string[] | undefined;
+    minBudget?: number | undefined;
+    maxBudget?: number | undefined;
+    minProposals?: number | undefined;
+    maxProposals?: number | undefined;
+    paymentVerified?: boolean | undefined;
+};

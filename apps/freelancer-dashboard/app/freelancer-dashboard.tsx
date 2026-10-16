@@ -2,7 +2,10 @@
 
 import { Icon } from "@iconify/react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "timeago.js";
 import { DashboardHeader } from "./_components/dashboard/dashboard-header";
 import { WorkspaceSidebar } from "./_components/dashboard/workspace-sidebar";
 import { JobCard } from "./_components/jobs/job-card";
@@ -11,21 +14,108 @@ import {
   JobFilterPopover,
   type JobFilters,
 } from "./_components/jobs/job-filter-popover";
-import { dashboardJobs } from "./_components/jobs/jobs-data";
 import { ProposalModal } from "./_components/jobs/proposal-modal";
 import type { Job } from "./_components/jobs/types";
-import { redirect } from "next/navigation";
 import { useClientAccount } from "./provider";
-import { useQuery } from "@tanstack/react-query";
 import { clientApiFetch } from "./utils/api";
+
+type FreelancerProfile = {
+  professional_title: string;
+  professional_description: string;
+  hourly_rate: string;
+  country: string;
+  city: string;
+  skills: string[];
+  languages: unknown[];
+  avatarUrl: string;
+  portfolios: unknown[];
+  identityVerified: boolean;
+};
+
+export const proposalRange = (range: string) => {
+  if (range === "Less than 5") return { maxProposals: "4" };
+  if (range === "5 to 10") return { minProposals: "5", maxProposals: "10" };
+  if (range === "10 to 15") return { minProposals: "10", maxProposals: "15" };
+  return {};
+};
+
+const getProfileStrength = (profile?: FreelancerProfile | null) => {
+  const checks: [boolean, string][] = [
+    [Boolean(profile?.professional_title), "Add a professional title"],
+    [
+      Boolean(profile?.professional_description),
+      "Write a professional description",
+    ],
+    [Boolean(profile?.hourly_rate), "Set your hourly rate"],
+    [Boolean(profile?.country && profile?.city), "Add your location"],
+    [(profile?.skills.length ?? 0) > 0, "Add your skills"],
+    [(profile?.languages.length ?? 0) > 0, "Add the languages you speak"],
+    [Boolean(profile?.avatarUrl), "Upload a profile photo"],
+    [(profile?.portfolios.length ?? 0) > 0, "Add a portfolio project"],
+    [profile?.identityVerified === true, "Verify your identity"],
+  ];
+
+  const done = checks.filter(([ok]) => ok).length;
+  return {
+    percent: (done / checks.length) * 100,
+    suggestions: checks.filter(([ok]) => !ok).map(([, label]) => label),
+  };
+};
+
+function getGreeting(date: Date = new Date()): string {
+  const hour = date.getHours();
+
+  if (hour >= 5 && hour < 12) return "Good Morning";
+  if (hour >= 12 && hour < 17) return "Good Afternoon";
+  if (hour >= 17 && hour < 21) return "Good Evening";
+  return "Good night";
+}
+
+
+const JobCardsSkeleton = () => (
+  <div className="grid gap-4" role="status" aria-label="Loading job posts">
+    {[0, 1, 2].map((item) => (
+      <div
+        key={item}
+        className="animate-pulse rounded-2xl border border-black/8 bg-white p-7"
+      >
+        <div className="h-3 w-12 rounded-full bg-[#e5e8e2]" />
+        <div className="mt-4 h-5 w-3/4 rounded-full bg-[#dfe4dc]" />
+        <div className="mt-3 h-4 w-2/5 rounded-full bg-[#e9ece6]" />
+        <div className="mt-4 h-3 w-full rounded-full bg-[#e5e8e2]" />
+        <div className="mt-2 h-3 w-4/5 rounded-full bg-[#e9ece6]" />
+
+        <div className="mt-6 flex gap-2">
+          {[20, 24, 16].map((width) => (
+            <div
+              key={width}
+              className="h-7 rounded-lg bg-[#e5e8e2]"
+              style={{ width: `${width}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export function FreelancerDashboard() {
   const account = useClientAccount();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Best matches");
   const [saved, setSaved] = useState<number[]>([]);
   const [proposalJob, setProposalJob] = useState<Job | null>(null);
   const [filters, setFilters] = useState<JobFilters>(emptyJobFilters);
+
+  const greeting = getGreeting();
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  const fullName = [account.firstName].filter(Boolean).join(" ") || account.email;
 
   const activeFilterCount =
     filters.experienceLevels.length +
@@ -60,38 +150,123 @@ export function FreelancerDashboard() {
     },
   });
 
+  const { data: profile, isLoading: profileLoading } = useQuery({
+    queryKey: ["freelancer-profile"],
+    enabled: Boolean(account),
+    retry: 1,
+    staleTime: 30_000,
+    queryFn: async () => {
+      // Change this path to wherever getLoggedInFreelancerProfileHandler is mounted.
+      const response = await clientApiFetch("freelancer/profile");
+
+      if (!response.ok) {
+        throw new Error(`Failed to load profile (${response.status})`);
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        message?: string;
+        data?: FreelancerProfile | null;
+      };
+
+      if (!result.success) {
+        throw new Error(result.message || "Could not load profile.");
+      }
+
+      return result.data ?? null;
+    },
+  });
+
+  const strength = useMemo(() => getProfileStrength(profile), [profile]);
+
+  const query = useMemo(() => {
+    const params = new URLSearchParams({
+      role: "freelancer",
+      filter: activeTab === "Most recent" ? "recent" : "best-match",
+    });
+
+    if (filters.experienceLevels.length)
+      params.set("levels", filters.experienceLevels.join(","));
+    if (filters.durations.length)
+      params.set("durations", filters.durations.join(","));
+    if (filters.minBudget) params.set("minBudget", filters.minBudget);
+    if (filters.maxBudget) params.set("maxBudget", filters.maxBudget);
+    if (filters.verifiedOnly) params.set("paymentVerified", "true");
+
+    Object.entries(proposalRange(filters.proposalRange)).forEach(
+      ([key, value]) => params.set(key, value),
+    );
+
+    return params.toString();
+  }, [activeTab, filters]);
+
+  const {
+    data: jobs = [],
+    isLoading: jobsLoading,
+    isError: jobsError,
+  } = useQuery({
+    queryKey: ["freelancer-jobs", query],
+    enabled: Boolean(account),
+    retry: 1,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const response = await clientApiFetch(`freelancer/jobs?${query}`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to load jobs (${response.status})`);
+      }
+
+      const result = (await response.json()) as {
+        success: boolean;
+        message?: string;
+        data?: Job[];
+      };
+
+      if (!result.success || !result.data) {
+        throw new Error(result.message || "Could not load jobs.");
+      }
+
+      return result.data;
+    },
+  });
+
+  // Map API rows into the UI's Job shape.
+  // clientRating, clientSpent and location are optional on Job, so they are omitted.
+  const mappedJobs = useMemo<Job[]>(
+    () =>
+      jobs.map((job: any) => ({
+        id: job.id,
+        title: job.title,
+        company: job.companyName,
+        verified: job.paymentVerified,
+        posted: format(job.published_at ?? job.created_at ?? new Date()),
+        type: "Fixed price" as const,
+        budget: `$${Number(job.total_budget).toLocaleString()}`,
+        level: job.expertise_level,
+        duration: job.expected_duration,
+        description: job.description,
+        skills: job.skills,
+        proposals: String(job.proposalCounts),
+        featured: (job.matchScore ?? 0) >= 4,
+      })),
+    [jobs],
+  );
+
+  // The server already applies level, duration, budget, proposals and
+  // payment filters, so only search text and the Saved tab are handled here.
   const visibleJobs = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return dashboardJobs.filter((job) => {
-      const searchable = [
-        job.title,
-        job.company,
-        job.description,
-        ...job.skills,
-      ]
+    const term = search.trim().toLowerCase();
+
+    return mappedJobs.filter((job) => {
+      const searchable = [job.title, job.company, job.description, ...job.skills]
         .join(" ")
         .toLowerCase();
-      if (query && !searchable.includes(query)) return false;
+
+      if (term && !searchable.includes(term)) return false;
       if (activeTab === "Saved jobs") return saved.includes(job.id);
-      if (
-        filters.experienceLevels.length &&
-        !filters.experienceLevels.includes(job.level)
-      )
-        return false;
-      if (filters.durations.length && !filters.durations.includes(job.duration))
-        return false;
-      const budget = Number(job.budget.replace(/[^0-9.]/g, ""));
-      if (filters.minBudget && budget < Number(filters.minBudget)) return false;
-      if (filters.maxBudget && budget > Number(filters.maxBudget)) return false;
-      if (
-        filters.proposalRange !== "Any number" &&
-        job.proposals !== filters.proposalRange
-      )
-        return false;
-      if (filters.verifiedOnly && !job.verified) return false;
       return true;
     });
-  }, [activeTab, filters, saved, search]);
+  }, [activeTab, mappedJobs, saved, search]);
 
   const toggleSaved = (id: number) =>
     setSaved((current) =>
@@ -107,11 +282,9 @@ export function FreelancerDashboard() {
       <main className="mx-auto max-w-360 px-5 py-8 sm:px-8 lg:py-10">
         <div className="mb-8 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
           <div>
-            <p className="text-sm font-medium text-[#62805f]">
-              Saturday, July 25
-            </p>
+            <p className="text-sm font-medium text-[#62805f]">{today}</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] sm:text-4xl">
-              Good morning, Shahriar.
+              {greeting}, {fullName}.
             </h1>
             <p className="mt-2 text-sm text-[#72776f]">
               Here are fresh opportunities matched to your profile.
@@ -136,7 +309,14 @@ export function FreelancerDashboard() {
         </div>
 
         <div className="grid items-start gap-6 xl:grid-cols-[240px_minmax(0,1fr)_280px]">
-          <WorkspaceSidebar />
+          <WorkspaceSidebar
+            fullName={fullName}
+            title={profile?.professional_title}
+            avatarUrl={profile?.avatarUrl}
+            strengthPercent={strength.percent}
+            strengthSuggestions={strength.suggestions}
+            loading={profileLoading}
+          />
 
           <section className="min-w-0">
             <div className="rounded-2xl border border-black/8 bg-white px-3 pt-3">
@@ -173,16 +353,34 @@ export function FreelancerDashboard() {
             </div>
 
             <div className="mt-4 grid gap-4">
-              {visibleJobs.map((job) => (
-                <JobCard
-                  key={job.id}
-                  job={job}
-                  saved={saved.includes(job.id)}
-                  onSave={() => toggleSaved(job.id)}
-                  onPropose={() => setProposalJob(job)}
-                />
-              ))}
-              {!visibleJobs.length && (
+              {jobsLoading && (
+                <JobCardsSkeleton />
+              )}
+
+              {jobsError && !jobsLoading && (
+                <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
+                  <h2 className="text-lg font-semibold">
+                    Could not load jobs
+                  </h2>
+                  <p className="mt-2 text-sm text-[#777c74]">
+                    Please refresh the page and try again.
+                  </p>
+                </div>
+              )}
+
+              {!jobsLoading &&
+                !jobsError &&
+                visibleJobs.map((job) => (
+                  <JobCard
+                    key={job.id}
+                    job={job}
+                    saved={saved.includes(job.id)}
+                    onSave={() => toggleSaved(job.id)}
+                    onPropose={() => setProposalJob(job)}
+                  />
+                ))}
+
+              {!jobsLoading && !jobsError && !visibleJobs.length && (
                 <div className="rounded-2xl border border-dashed border-black/12 bg-white px-6 py-16 text-center">
                   <Icon
                     icon="solar:case-minimalistic-linear"
@@ -240,11 +438,13 @@ export function FreelancerDashboard() {
               <div className="mt-5 border-t border-black/7 pt-4">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-[#777c74]">Available Connects</span>
-                  <strong>{connectsLoading ? "…" : (connectMetadata?.connects ?? "—")}</strong>
+                  <strong>
+                    {connectsLoading ? "…" : (connectMetadata?.connects ?? "—")}
+                  </strong>
                 </div>
                 <button
                   type="button"
-                  onClick={() => redirect("/settings?section=connects")}
+                  onClick={() => router.push("/settings?section=connects")}
                   className="mt-3 w-full cursor-pointer rounded-xl border border-black/10 py-2.5 text-xs font-semibold hover:bg-black/3"
                 >
                   Buy Connects
@@ -289,14 +489,15 @@ export function FreelancerDashboard() {
               </span>
               <h2 className="mt-4 font-semibold">Stand out to clients</h2>
               <p className="mt-2 text-xs leading-5 text-[#667064]">
-                Add two recent projects to your portfolio to improve your match
-                quality.
+                {profileLoading
+                  ? "Checking your profile…"
+                  : (strength.suggestions[0] ?? "Your profile is complete. Great work!")}
               </p>
               <Link
                 href="/my-profile"
                 className="mt-4 inline-block text-xs font-semibold text-[#4c7549] hover:underline"
               >
-                Update portfolio
+                Update profile
               </Link>
             </section>
           </aside>

@@ -73,10 +73,10 @@ function pickAvatar(source: unknown): string | null {
   return null;
 }
 
-export function useAvatarUrl() {
+export function useAvatar() {
   const account = useClientAccount();
 
-  const { data } = useQuery<string | null>({
+  const { data, isLoading } = useQuery<string | null>({
     queryKey: AVATAR_QUERY_KEY,
     enabled: Boolean(account),
     staleTime: 60_000,
@@ -97,7 +97,10 @@ export function useAvatarUrl() {
 
       // For freelancers, the avatar lives in the profile metadata.
       try {
-        const response = await clientApiFetch("freelancer/profile?role=freelancer", { method: "GET" });
+        const response = await clientApiFetch(
+          "freelancer/profile?role=freelancer",
+          { method: "GET" },
+        );
         if (!response.ok) return null;
         const result = await response.json();
         const profile = result?.data ?? result;
@@ -108,5 +111,10 @@ export function useAvatarUrl() {
     },
   });
 
-  return data ?? null;
+  return { avatarUrl: data ?? null, avatarLoading: isLoading };
+}
+
+// Keeps the editor and preview working without changes.
+export function useAvatarUrl() {
+  return useAvatar().avatarUrl;
 }

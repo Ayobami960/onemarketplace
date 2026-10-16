@@ -1,7 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { db } from "../../database/clients.js";
-import { accounts, freelancer_metadata, freelancer_portfolios } from "../../database/schema.js";
-import type { FreelancerProfileData, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
+import { accounts, client_metadata, freelancer_metadata, freelancer_portfolios, job_posts, proposals } from "../../database/schema.js";
+import type { FreelancerProfileData, JobFeedFilters, PortfolioData, SaveFreelancerProfileInput } from "./@types.js";
 import { env } from "../../config/env.js";
 import { ApiError } from "../../utils/api-error.js";
 import { imageKit } from "../../config/imageKit.js";
@@ -9,6 +9,17 @@ import { randomUUID } from "crypto";
 import { ACCOUNT_AUTH_CACHE_TTL_SECONDS, getAccountAuthCacheKey } from "../../config/constants.js";
 import { redis } from "../../config/redis.js";
 import { addConnects } from "../connects/connects.service.js";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Client country comes from the client profile first, then the account row.
+ * Both values are selected by the job queries below, so no extra query is needed.
+ */
+const resolveClientCountry = (
+    profileCountry: string | null,
+    accountCountry: string | null,
+): string | null => profileCountry?.trim() || accountCountry?.trim() || null;
 
 export const getFreelancerProfile = async (userId: string): Promise<FreelancerProfileData | null> => {
     const [result] = await db
@@ -228,8 +239,8 @@ export const saveFreelancerProfile = async (
 
     await deleteStorageAssets(staleImageIds);
 
-
     await addConnects(input.userId);
+
     // Best-effort cache refresh: a Redis failure must not fail a committed save.
     try {
         await redis.setEx(
@@ -251,4 +262,134 @@ export const saveFreelancerProfile = async (
     }
 
     return profile;
+};
+
+/** Job feed for the freelancer dashboard. */
+export const getMatchedJobPosts = async (
+    userId: string,
+    filters: JobFeedFilters = {},
+) => {
+    const [profile] = await db
+        .select({ skills: freelancer_metadata.skills })
+        .from(freelancer_metadata)
+        .where(eq(freelancer_metadata.auth_id, userId));
+
+    if (!profile) throw new ApiError(404, "Freelancer profile not found.");
+
+    const skills = profile.skills.map((skill) => skill.toLowerCase());
+
+    const jobs = await db
+        .select({
+            job: job_posts,
+            companyName: client_metadata.company_name,
+            profileCountry: client_metadata.country,
+            accountCountry: accounts.country,
+            paymentVerified: accounts.paymentMethodVerified,
+        })
+        .from(job_posts)
+        .innerJoin(accounts, eq(job_posts.client_id, accounts.auth_id))
+        .innerJoin(client_metadata, eq(job_posts.client_id, client_metadata.auth_id))
+        .where(eq(job_posts.status, "PUBLISHED"))
+        .orderBy(desc(job_posts.published_at));
+
+    const proposalCounts = await db
+        .select({ jobId: proposals.job_id, count: count(proposals.id) })
+        .from(proposals)
+        .groupBy(proposals.job_id);
+
+    const counts = new Map(
+        proposalCounts.map((item) => [item.jobId, Number(item.count)]),
+    );
+
+    const filteredJobs = jobs
+        .map(({ job, companyName, profileCountry, accountCountry, paymentVerified }) => ({
+            ...job,
+            companyName,
+            clientCountry: resolveClientCountry(profileCountry, accountCountry),
+            paymentVerified: paymentVerified === true,
+            proposalCounts: counts.get(job.id) ?? 0,
+        }))
+        .filter((job) => {
+            const budget = Number(job.total_budget);
+            return (
+                (!filters.levels?.length || filters.levels.includes(job.expertise_level)) &&
+                (!filters.durations?.length || filters.durations.includes(job.expected_duration)) &&
+                (filters.minBudget === undefined || budget >= filters.minBudget) &&
+                (filters.maxBudget === undefined || budget <= filters.maxBudget) &&
+                (filters.minProposals === undefined || job.proposalCounts >= filters.minProposals) &&
+                (filters.maxProposals === undefined || job.proposalCounts <= filters.maxProposals) &&
+                (!filters.paymentVerified || job.paymentVerified)
+            );
+        });
+
+    // "recent": already ordered by published_at desc from the query.
+    if (filters.sort === "recent") return filteredJobs;
+
+    const postedAt = (job: { published_at: Date | null; created_at: Date | null }) =>
+        new Date(job.published_at ?? job.created_at ?? 0).getTime();
+
+    return filteredJobs
+        .map((job) => {
+            const jobSkills = job.skills.map((skill) => skill.toLowerCase());
+            const content = `${job.title} ${job.description}`.toLowerCase();
+
+            const skillMatches = skills.filter((skill) =>
+                jobSkills.some(
+                    (jobSkill) => jobSkill === skill || jobSkill.includes(skill),
+                ),
+            ).length;
+
+            const contentMatches = skills.filter((skill) =>
+                content.includes(skill),
+            ).length;
+
+            return { ...job, matchScore: skillMatches * 2 + contentMatches };
+        })
+        // Hides jobs that share nothing with the freelancer's skills.
+        .filter((job) => job.matchScore > 0)
+        .sort(
+            (first, second) =>
+                second.matchScore - first.matchScore ||
+                postedAt(second) - postedAt(first),
+        );
+};
+
+/** Single job post for the freelancer job details page. */
+export const getFreelancerJobPost = async (jobId: string) => {
+    if (!UUID_PATTERN.test(jobId)) {
+        throw new ApiError(400, "Invalid job id.");
+    }
+
+    const [result] = await db
+        .select({
+            job: job_posts,
+            companyName: client_metadata.company_name,
+            companyDescription: client_metadata.company_description,
+            profileCountry: client_metadata.country,
+            accountCountry: accounts.country,
+            paymentVerified: accounts.paymentMethodVerified,
+            clientJoinedAt: accounts.created_at,
+        })
+        .from(job_posts)
+        .innerJoin(accounts, eq(job_posts.client_id, accounts.auth_id))
+        .innerJoin(client_metadata, eq(job_posts.client_id, client_metadata.auth_id))
+        .where(and(eq(job_posts.id, jobId), eq(job_posts.status, "PUBLISHED")))
+        .limit(1);
+
+    if (!result) throw new ApiError(404, "Job post not found.");
+
+    const [proposalTotal] = await db
+        .select({ count: count(proposals.id) })
+        .from(proposals)
+        .where(eq(proposals.job_id, jobId));
+
+    return {
+        ...result.job,
+        companyName: result.companyName,
+        companyDescription: result.companyDescription,
+        clientCountry: resolveClientCountry(result.profileCountry, result.accountCountry),
+        paymentVerified: result.paymentVerified === true,
+        clientJoinedAt: result.clientJoinedAt,
+        proposalCounts: Number(proposalTotal?.count ?? 0),
+    };
 };

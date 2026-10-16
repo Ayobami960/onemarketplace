@@ -276,9 +276,6 @@ export const connectsPurchaseHistoryRelations = relations(connects_purchase_hist
 }),
 );
 
-
-
-
 export const notifications = pgTable("notifications", {
     id: uuid("id").defaultRandom().primaryKey(),
     event_id: text("event_id").notNull().unique(),
@@ -292,3 +289,27 @@ export const notifications = pgTable("notifications", {
     read_at: timestamp("read_at", {withTimezone: true}),
     created_at: timestamp("created_at", {withTimezone: true}).defaultNow(),
 });
+
+
+export const proposals = pgTable("proposals", {
+    id: uuid("id").defaultRandom().primaryKey(),
+    job_id: uuid("job_id").notNull().references(() => job_posts.id, { onDelete: "cascade"}),
+    sender_id: text("sender_id").notNull(),
+    sender_type: text("sender_type").notNull(),
+    cover_letter: text("cover_letter").notNull(),
+    bid_amount: numeric("bid_amount", { precision: 9, scale: 2 }).notNull(),
+    duration: text("duration").notNull(),
+    screening_answers: jsonb("screening_answers").$type<Array<{ question: string; answer: string}>>().notNull().default([]),
+    status: text("status").notNull().default("SUBMITTED"),
+    created_at: timestamp("created_at", {withTimezone: true}).defaultNow(),
+    updated_at: timestamp("updated_at", {withTimezone: true}).defaultNow()
+},
+(table) => [uniqueIndex("proposal_sender_job_unique").on(table.sender_id, table.job_id)],
+);
+
+export const proposalsRelations = relations(proposals, ({one}) => ({
+    job: one(job_posts, {
+        fields: [proposals.job_id],
+        references: [job_posts.id]
+    }),
+}));

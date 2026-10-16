@@ -1133,9 +1133,10 @@ export function ProfileEditor({
        */
 
       return (await fetchProfileApi("PUT", {
-        freelancer_metadata,
-        avatarUrl: avatarUrl ?? "",
-
+        freelancer_metadata: {
+          ...freelancer_metadata,
+          avatarUrl: avatarUrl ?? "",
+        },
         freelancer_portfolios: portfolios.map(
           ({
             client_id: _clientId,
@@ -1267,7 +1268,7 @@ export function ProfileEditor({
     try {
       const formData = new FormData();
       formData.append("avatar", file);
-      const uploaded = await fetchApi("upload/avatar", "POST", formData) as { url: string };
+      const uploaded = await fetchApi("upload/avatar", "POST", formData) as { url: string; fileId: string };
 
       // Load the existing profile so we can preserve portfolios and metadata.
       const existing = (await fetchProfileApi("GET")) as FreelancerProfileData | null;
@@ -1286,8 +1287,8 @@ export function ProfileEditor({
           experience_level: existing?.experience_level ?? "Entry",
           skills: existing?.skills ?? [],
           languages: existing?.languages ?? [],
+          avatarUrl: uploaded.url,
         },
-        avatarUrl: uploaded.url,
         freelancer_portfolios: (existing?.portfolios ?? []).map((p) => ({
           title: p.title,
           category: p.category,
@@ -1297,12 +1298,22 @@ export function ProfileEditor({
         })),
       });
 
-      // Share the new avatar with the sidebar and preview through the same cache.
+      // Update both caches so the sidebar, preview, and avatar hook all
+      // pick up the new URL immediately without waiting for a refetch.
       queryClient.setQueryData(AVATAR_QUERY_KEY, uploaded.url);
-      queryClient.invalidateQueries({ queryKey: ["profile-metadata"] });
+      queryClient.setQueryData(
+        ["profile-metadata"],
+        (old: FreelancerProfileData | null | undefined) =>
+          old
+            ? { ...old, avatarUrl: uploaded.url }
+            : null,
+      );
+
       toast.success("Profile photo updated");
     } catch (error) {
-      toast.error("The profile photo could not be updated.");
+      toast.error(
+        error instanceof Error ? error.message : "The profile photo could not be updated.",
+      );
     }
 
     event.target.value = "";

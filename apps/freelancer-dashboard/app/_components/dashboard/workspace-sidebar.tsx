@@ -5,187 +5,142 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { sidebarNavigation } from "./navigation";
-import { useClientAccount } from "@/app/provider";
-import { useQuery } from "@tanstack/react-query";
-import { clientApiFetch } from "@/app/utils/api";
-import {
-  computeProfileStrength,
-  useAvatarUrl,
-} from "@/app/utils/profile-strength";
 
-type Language = {
-  language: string;
-  proficiency: "Conversational" | "Fluent" | "Native";
+function ProfileSummarySkeleton() {
+  return (
+    <section
+      aria-label="Loading profile summary"
+      aria-busy="true"
+      className="rounded-2xl border border-black/8 bg-white p-5"
+    >
+      <div className="animate-pulse">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 shrink-0 rounded-full bg-[#dce3d9]" />
+          <div className="flex-1">
+            <div className="h-4 w-3/4 rounded-full bg-[#e1e5de]" />
+            <div className="mt-2 h-3 w-1/2 rounded-full bg-[#e9ece6]" />
+          </div>
+        </div>
+        <div className="mt-5 flex items-center justify-between">
+          <div className="h-3 w-24 rounded-full bg-[#e1e5de]" />
+          <div className="h-3 w-8 rounded-full bg-[#dce3d9]" />
+        </div>
+        <div className="mt-2 h-1.5 rounded-full bg-[#e1e5de]" />
+        <div className="mt-4 h-3 w-28 rounded-full bg-[#dce3d9]" />
+      </div>
+    </section>
+  );
+}
+
+type WorkspaceSidebarProps = {
+  fullName: string;
+  title?: string | undefined;
+  avatarUrl?: string | undefined;
+  strengthPercent: number;
+  strengthSuggestions: string[];
+  loading?: boolean;
 };
 
-/** Shape returned by GET /api/v1/freelancer/profile. */
-type FreelancerProfileData = {
-  professional_title: string;
-  professional_description: string;
-  hourly_rate: string;
-  country: string;
-  city: string;
-  availability_status: string;
-  weekly_availability: string;
-  experience_level: string;
-  skills: string[];
-  languages: Language[];
-  portfolios: Array<{
-    id: string;
-    title: string;
-    category: string;
-    description: string;
-    live_url: string | null;
-    cover_image: {
-      imageId: string;
-      url: string;
-    };
-  }>;
-  avatarUrl: string;
-  identityVerified: boolean;
-  joined_at: string | null;
-};
-
-const fetchApi = async (
-  path: string,
-  method: "GET" | "PUT" | "POST",
-  payload?: Record<string, unknown> | FormData,
-): Promise<unknown> => {
-  let response: Response;
-  const sendRequest = () =>
-    clientApiFetch(path, {
-      method,
-      ...(payload instanceof FormData
-        ? { body: payload }
-        : payload
-          ? {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            }
-          : {}),
-    });
-
-  try {
-    response = await sendRequest();
-    if (response.status === 401) {
-      const refreshResponse = await clientApiFetch("auth/refresh", {
-        method: "POST",
-      });
-      if (refreshResponse.ok) response = await sendRequest();
-    }
-  } catch {
-    throw new Error(
-      "The server could not be reached. Check your connection and try again.",
-    );
-  }
-
-  let result: { success?: boolean; message?: string; data?: unknown };
-
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error(
-      `The server returned an unexpected response (${response.status}).`,
-    );
-  }
-
-  if (!response.ok || result.success === false) {
-    throw new Error(result.message || `The request failed (${response.status}).`);
-  }
-
-  return result.data;
-};
-
-const fetchProfileApi = (
-  method: "GET" | "PUT",
-  payload?: Record<string, unknown>,
-) => fetchApi("freelancer/profile?role=freelancer", method, payload);
-
-export function WorkspaceSidebar() {
+export function WorkspaceSidebar({
+  fullName,
+  title,
+  avatarUrl,
+  strengthPercent,
+  strengthSuggestions,
+  loading = false,
+}: WorkspaceSidebarProps) {
   const pathname = usePathname();
-  const account = useClientAccount();
-  const avatarUrl = useAvatarUrl();
+  const showSkeleton = loading;
 
-  const fullName =
-    [account.firstName, account.lastName].filter(Boolean).join(" ") ||
-    account.email;
   const initials =
-    [account.firstName, account.lastName]
-      .map((n) => n?.[0] ?? "")
-      .join("")
-      .toUpperCase() || "U";
-
-  const { data: profile } = useQuery({
-    queryKey: ["profile-metadata"], // same key as the editor, so the cache is shared
-    enabled: Boolean(account),
-    retry: 1,
-    staleTime: 30_000,
-    queryFn: async () =>
-      (await fetchProfileApi("GET")) as FreelancerProfileData | null,
-  });
-
-  const profileStrength = computeProfileStrength({
-    avatarUrl,
-    firstName: account.firstName,
-    lastName: account.lastName,
-    country: profile?.country,
-    city: profile?.city,
-    professional_title: profile?.professional_title,
-    professional_description: profile?.professional_description,
-    hourly_rate: profile?.hourly_rate,
-    availability_status: profile?.availability_status,
-    weekly_availability: profile?.weekly_availability,
-    experience_level: profile?.experience_level,
-    skillsCount: profile?.skills?.length ?? 0,
-    languagesCount: profile?.languages?.length ?? 0,
-    portfoliosCount: profile?.portfolios?.length ?? 0,
-  });
+    fullName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join("") || "?";
 
   return (
     <aside className="grid gap-5 xl:sticky xl:top-24">
-      <section className="rounded-2xl border border-black/8 bg-white p-5">
-        <div className="flex items-center gap-3">
-          {avatarUrl ? (
-            <Image
-              src={avatarUrl}
-              alt={fullName}
-              width={48}
-              height={48}
-              unoptimized
-              className="h-12 w-12 shrink-0 rounded-full object-cover"
-            />
-          ) : (
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#496e67] text-sm font-semibold text-white">
-              {initials}
-            </span>
-          )}
-          <div className="min-w-0">
-            <h2 className="truncate font-semibold">{fullName}</h2>
-            <p className="truncate text-xs text-[#7b8078]">
-              {profile?.professional_title}
-            </p>
+      {showSkeleton ? (
+        <ProfileSummarySkeleton />
+      ) : (
+        <section className="rounded-2xl border border-black/8 bg-white p-5">
+          <div className="flex items-center gap-3">
+            {avatarUrl ? (
+              <Image
+                src={avatarUrl}
+                alt={fullName}
+                width={48}
+                height={48}
+                unoptimized
+                className="h-12 w-12 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <span
+                aria-hidden="true"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#496e67] text-sm font-semibold text-white"
+              >
+                {initials}
+              </span>
+            )}
+            <div className="min-w-0">
+              <h2 className="truncate font-semibold">{fullName}</h2>
+              <p className="truncate text-xs text-[#7b8078]">{title}</p>
+            </div>
           </div>
-        </div>
 
-        <div className="mt-5 flex items-center justify-between text-xs">
-          <span className="font-medium">Profile strength</span>
-          <strong className="text-[#52784f]">
-            {Math.round(profileStrength)}%
-          </strong>
-        </div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e6e9e3]">
-          <div
-            className="h-full rounded-full bg-[#648b61] transition-all"
-            style={{ width: `${profileStrength}%` }}
-          />
-        </div>
-        <Link
-          href="/my-profile"
-          className="mt-4 inline-block text-xs font-semibold text-[#4e774b] hover:underline"
-        >
-          Preview your profile
-        </Link>
-      </section>
+          <div className="mt-5 flex items-center justify-between text-xs">
+            <span className="font-medium">Profile strength</span>
+
+            <span className="flex items-center gap-1.5">
+              <strong className="text-[#52784f]">
+                {Math.round(strengthPercent)}%
+              </strong>
+
+              {strengthPercent < 100 && strengthSuggestions.length > 0 && (
+                <span className="group relative">
+                  <button
+                    type="button"
+                    aria-label="How to complete your profile"
+                    className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-[#789075] bg-white text-[10px] font-bold text-[#52784f]"
+                  >
+                    ?
+                  </button>
+
+                  <span
+                    role="tooltip"
+                    className="pointer-events-none absolute right-0 bottom-6 z-20 hidden w-56 rounded-xl bg-[#252724] p-3 text-left text-[11px] leading-5 font-normal text-white shadow-xl group-focus-within:block group-hover:block"
+                  >
+                    <strong className="mb-1 block font-semibold">
+                      Reach 100%
+                    </strong>
+                    {strengthSuggestions.map((suggestion) => (
+                      <span key={suggestion} className="block text-white/75">
+                        • {suggestion}
+                      </span>
+                    ))}
+                  </span>
+                </span>
+              )}
+            </span>
+          </div>
+
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#e6e9e3]">
+            <div
+              className="h-full rounded-full bg-[#648b61] transition-all"
+              style={{ width: `${strengthPercent}%` }}
+            />
+          </div>
+
+          <Link
+            href="/my-profile"
+            className="mt-4 inline-block text-xs font-semibold text-[#4e774b] hover:underline"
+          >
+            Preview your profile
+          </Link>
+        </section>
+      )}
 
       <nav className="rounded-2xl border border-black/8 bg-white p-2 text-sm">
         {sidebarNavigation.map((item) => {
@@ -202,7 +157,9 @@ export function WorkspaceSidebar() {
               }`}
             >
               <Icon
-                icon={active ? item.icon.replace("-linear", "-bold") : item.icon}
+                icon={
+                  active ? item.icon.replace("-linear", "-bold") : item.icon
+                }
                 width="19"
               />
               {item.label}
